@@ -1,0 +1,6 @@
+{
+  "name": "Zawadi JSS & CBC Portal",
+  "description": "Kenyan Junior Secondary School CBC curriculum tracking, M-Pesa fee system, Tap-to-Eat meal logging, and TPAD educator appraisals.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
