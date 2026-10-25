@@ -1,6 +1,6 @@
 {
-  "name": "Zawadi JSS & CBC Portal",
-  "description": "Kenyan Junior Secondary School CBC curriculum tracking, M-Pesa fee system, Tap-to-Eat meal logging, and TPAD educator appraisals.",
+  "name": "Limuru Model School ERP",
+  "description": "Comprehensive Kenyan Grade 1-9 CBC school management system with Daraja M-Pesa sync, votehead & bursary accounting, bulk SMS, payroll, timetabling, and NEMIS/KEMIS integration.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
