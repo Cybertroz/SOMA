@@ -39,7 +39,12 @@ import {
   AlertCircle,
   HelpCircle,
   RefreshCw,
+  Warehouse,
+  FileSpreadsheet,
 } from 'lucide-react';
+import { KitchenInventory } from './components/KitchenInventory';
+import { TextbookStationeryPlatform } from './components/TextbookStationeryPlatform';
+import { exportToExcel } from './utils/excelExport';
 
 /* =========================================================================
    TYPE DEFINITIONS (Kenyan JSS & CBC Standard)
@@ -881,7 +886,15 @@ const INITIAL_TEACHERS: TeacherTPAD[] = [
 
 export default function App() {
   // Navigation tabs
-  type ActiveTab = 'dashboard' | 'cbc' | 'tap-to-eat' | 'fees' | 'report-card' | 'tpad';
+  type ActiveTab =
+    | 'dashboard'
+    | 'cbc'
+    | 'tap-to-eat'
+    | 'kitchen-inventory'
+    | 'textbooks-stationery'
+    | 'fees'
+    | 'report-card'
+    | 'tpad';
   const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
 
   // Application Data States
@@ -1282,14 +1295,16 @@ export default function App() {
               </div>
             </div>
 
-            {/* Zone 2: 4-5 Clean Nav Links */}
-            <nav className="hidden md:flex items-center gap-2 lg:gap-3 text-sm font-medium">
+            {/* Zone 2: Clean Nav Links */}
+            <nav className="hidden md:flex items-center gap-1.5 lg:gap-2 text-sm font-medium">
               {[
                 { id: 'dashboard', label: 'Overview' },
                 { id: 'cbc', label: 'CBC Curriculum' },
                 { id: 'tap-to-Eat', label: 'Tap-to-Eat', tabKey: 'tap-to-eat' },
+                { id: 'kitchen-inventory', label: 'Kitchen Stores' },
+                { id: 'textbooks-stationery', label: 'Books & Stationery' },
                 { id: 'fees', label: 'M-Pesa Fees' },
-                { id: 'report-card', label: 'Assessment Reports' },
+                { id: 'report-card', label: 'Reports' },
                 { id: 'tpad', label: 'Teacher TPAD' },
               ].map((item) => {
                 const targetKey = (item.tabKey || item.id) as ActiveTab;
@@ -1301,7 +1316,7 @@ export default function App() {
                       setActiveTab(targetKey);
                       if (soundEnabled) playSound('click');
                     }}
-                    className={`px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap transition-colors ${
+                    className={`px-2.5 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap transition-colors ${
                       isActive
                         ? 'bg-emerald-800 text-white shadow-xs'
                         : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
@@ -1343,6 +1358,8 @@ export default function App() {
             { id: 'dashboard', label: 'Overview' },
             { id: 'cbc', label: 'CBC Tracking' },
             { id: 'tap-to-eat', label: 'Tap-to-Eat' },
+            { id: 'kitchen-inventory', label: 'Kitchen Stores' },
+            { id: 'textbooks-stationery', label: 'Books & Stationery' },
             { id: 'fees', label: 'Fees & M-Pesa' },
             { id: 'report-card', label: 'Reports' },
             { id: 'tpad', label: 'TPAD KPIs' },
@@ -1748,6 +1765,47 @@ export default function App() {
                     </button>
                   </div>
                 </div>
+
+                {/* Kitchen Stores & Textbook Quick Widget */}
+                <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-xs space-y-3">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                    <div className="flex items-center gap-2">
+                      <Warehouse className="w-4 h-4 text-emerald-700" />
+                      <h3 className="text-sm font-semibold text-slate-900">Stores & MoE Textbooks</h3>
+                    </div>
+                    <span className="text-[10px] bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded font-medium">
+                      Excel Ready
+                    </span>
+                  </div>
+
+                  <div className="space-y-2 text-xs">
+                    <div className="flex items-center justify-between p-2.5 rounded bg-slate-50 border border-slate-100">
+                      <div>
+                        <div className="font-semibold text-slate-800">Kitchen Foodstocks</div>
+                        <div className="text-[11px] text-slate-500">Dry maize, beans, rice & manual logs</div>
+                      </div>
+                      <button
+                        onClick={() => setActiveTab('kitchen-inventory')}
+                        className="text-xs text-emerald-700 font-semibold hover:underline"
+                      >
+                        Manage →
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-between p-2.5 rounded bg-slate-50 border border-slate-100">
+                      <div>
+                        <div className="font-semibold text-slate-800">Textbooks & Stationery</div>
+                        <div className="text-[11px] text-slate-500">MoE CBC book loans & exercise books</div>
+                      </div>
+                      <button
+                        onClick={() => setActiveTab('textbooks-stationery')}
+                        className="text-xs text-emerald-700 font-semibold hover:underline"
+                      >
+                        Issue →
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -1797,6 +1855,45 @@ export default function App() {
                       </option>
                     ))}
                   </select>
+
+                  <button
+                    onClick={() => {
+                      const currentSubj = JSS_LEARNING_AREAS.find((s) => s.id === cbcSubjectFilter);
+                      exportToExcel(
+                        `Zawadi_JSS_${currentSubj?.code || 'CBC'}_Marks`,
+                        filteredCbcStudents,
+                        [
+                          { header: 'Learner Name', key: 'name' },
+                          { header: 'NEMIS UPI', key: 'nemisUpi' },
+                          { header: 'KNEC Assessment No', key: 'assessmentNo' },
+                          { header: 'Grade', key: 'grade' },
+                          { header: 'Stream', key: 'stream' },
+                          { header: 'Gender', key: 'gender' },
+                          { header: 'Learning Area', key: () => currentSubj?.name || 'Subject' },
+                          {
+                            header: 'Formative Level',
+                            key: (std) => std.assessments[cbcSubjectFilter]?.formative || 'ME',
+                          },
+                          {
+                            header: 'Summative Score (%)',
+                            key: (std) => std.assessments[cbcSubjectFilter]?.summativeScore || 70,
+                          },
+                          {
+                            header: 'Performance Level',
+                            key: (std) => std.assessments[cbcSubjectFilter]?.level || 'ME',
+                          },
+                          {
+                            header: 'Teacher Rubric Notes',
+                            key: (std) => std.assessments[cbcSubjectFilter]?.remarks || '',
+                          },
+                        ]
+                      );
+                    }}
+                    className="px-3 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5" />
+                    Export to Excel (.csv)
+                  </button>
                 </div>
               </div>
 
@@ -2355,7 +2452,32 @@ export default function App() {
                   <h3 className="font-semibold text-slate-800">Learner Termly Fee Ledger</h3>
                   <p className="text-slate-500">Real-time balances and Safaricom Paybill verification</p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={() => {
+                      exportToExcel(
+                        'Zawadi_JSS_Term1_Fee_Ledger',
+                        students,
+                        [
+                          { header: 'Learner Name', key: 'name' },
+                          { header: 'NEMIS UPI', key: 'nemisUpi' },
+                          { header: 'Grade', key: 'grade' },
+                          { header: 'Stream', key: 'stream' },
+                          { header: 'Guardian Name', key: 'guardianName' },
+                          { header: 'Guardian Phone', key: 'guardianPhone' },
+                          { header: 'Total Term Fee (KES)', key: (s) => s.fees.totalTermFee },
+                          { header: 'Paid Amount (KES)', key: (s) => s.fees.paidAmount },
+                          { header: 'Outstanding Balance (KES)', key: (s) => s.fees.balance },
+                          { header: 'Fee Status', key: (s) => s.fees.status },
+                        ]
+                      );
+                    }}
+                    className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-xs font-semibold flex items-center gap-1 shadow-xs transition-colors"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5" />
+                    Export Excel (.csv)
+                  </button>
+                  <span className="text-slate-400">|</span>
                   <span className="text-slate-500">Breakdown:</span>
                   <span className="bg-emerald-50 text-emerald-800 px-2 py-0.5 rounded font-semibold">
                     {summaryMetrics.clearedCount} Cleared
@@ -3077,6 +3199,28 @@ export default function App() {
               </div>
             )}
           </div>
+        )}
+
+        {/* =======================================================================
+            VIEW 7: KITCHEN FOODSTOCK INVENTORY & MANUAL FEEDING TRACKER
+            ======================================================================= */}
+        {activeTab === 'kitchen-inventory' && (
+          <KitchenInventory />
+        )}
+
+        {/* =======================================================================
+            VIEW 8: MOE TEXTBOOK ISSUANCE & STATIONERY SUPPLIES PLATFORM
+            ======================================================================= */}
+        {activeTab === 'textbooks-stationery' && (
+          <TextbookStationeryPlatform
+            students={students.map((s) => ({
+              id: s.id,
+              name: s.name,
+              nemisUpi: s.nemisUpi,
+              grade: s.grade,
+              stream: s.stream,
+            }))}
+          />
         )}
       </main>
 
