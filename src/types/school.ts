@@ -14,7 +14,7 @@ export type GradeLevel =
   | 'Grade 8'
   | 'Grade 9';
 
-export type UserRole = 'principal' | 'bursar' | 'class_master' | 'teacher' | 'parent';
+export type UserRole = 'principal' | 'bursar' | 'class_master' | 'teacher' | 'parent' | 'moe_director';
 
 export type PermissionKey =
   | 'view_dashboard'
@@ -47,7 +47,10 @@ export type PermissionKey =
   | 'view_fleet'
   | 'manage_kemis_sync'
   | 'view_kemis_sync'
-  | 'view_audit_logs';
+  | 'view_audit_logs'
+  | 'moe_county_oversight'
+  | 'moe_fund_disbursement'
+  | 'moe_transfer_approval';
 
 export interface AuthUser {
   id: string;
@@ -284,11 +287,357 @@ export interface SecurityAuditLog {
     | 'AUTH_LOGIN'
     | 'AUTH_SIGNUP'
     | 'TEACHER_ONBOARDED'
-    | 'FLEET_FUEL_LOG';
+    | 'FLEET_FUEL_LOG'
+    | 'FEE_REMINDER_SMS'
+    | 'CLASS_STREAM_RENAMED'
+    | 'TPAD_APPRAISAL_SIGN'
+    | 'MOE_SUPER_LOGIN'
+    | 'MOE_CAPITATION_DISBURSE'
+    | 'MOE_TRANSFER_DECISION'
+    | 'MOE_SCHOOL_APPROVAL'
+    | 'MOE_INSPECTION_AUDIT';
   targetResource: string;
   details: string;
   ipAddress: string;
   sensitivityLevel: 'Confidential' | 'Restricted' | 'General';
+}
+
+export interface KiambuSchoolRecord {
+  id: string;
+  name: string;
+  centerCode: string; // e.g. "20401823"
+  subCounty: string; // e.g. "Limuru", "Kiambu", "Thika", "Ruiru", "Kikuyu", "Lari", "Gatundu South"
+  category: 'Public Comprehensive' | 'Private Academy' | 'SNE Approved Special School';
+  levelsOffered: string[]; // e.g. ['Grade 1-6 Primary', 'Grade 7-9 JSS']
+  principalName: string;
+  contactPhone: string;
+  enrolledLearners: number;
+  verifiedKemisHeadcount: number;
+  fpeFdjseCapitationTerm1: number;
+  disbursementStatus: 'Disbursed' | 'Approved - Pending Treasury' | 'Audited - Flagged Variance';
+  transferRequestsCount: number;
+  kpseaCandidateCount: number;
+  kjseaCandidateCount: number;
+  complianceScore: number; // e.g. 96
+  accreditationStatus: 'Fully Accredited' | 'Provisional 2026' | 'Under QASO Inspection';
+  infrastructureGrantApproved: number;
+  gpsCoordinates: string;
+}
+
+export interface MoeCapitationDisbursement {
+  id: string;
+  trancheNumber: string; // e.g. "FPE-FDJSE-2026-TR1-901"
+  term: string; // e.g. "2026 Term 1 (50% Tranche)"
+  schoolId: string;
+  schoolName: string;
+  subCounty: string;
+  totalEligibleStudents: number;
+  primaryCount: number;
+  jssCount: number;
+  totalAmountDisbursed: number;
+  voteheadBreakdown: {
+    tuitionTextbooks: number;
+    operationsUtilities: number;
+    repairsMaintenance: number;
+    activityCoCurricular: number;
+    smasseScienceKit: number;
+  };
+  treasuryVoucherRef: string;
+  approvedBy: string;
+  approvalDate: string;
+  pkiDigitalSignatureSha256: string;
+  status: 'Approved & Disbursed' | 'Awaiting CDE Sign-Off' | 'Flagged by Auditor';
+}
+
+export interface MoeTransferApproval {
+  id: string;
+  studentName: string;
+  nemisUpi: string;
+  grade: GradeLevel;
+  fromSchoolName: string;
+  fromCenterCode: string;
+  toSchoolName: string;
+  toCenterCode: string;
+  reason: 'Parent Relocation' | 'Medical / Climate Needs' | 'Special Needs Placement' | 'Academic Talent Advancement';
+  subCounty: string;
+  county: string;
+  status: 'Pending CDE Approval' | 'Approved by Ministry' | 'Rejected - Stream Capacity Exceeded';
+  nemisClearanceCertNo: string;
+  submissionDate: string;
+  reviewedBy?: string;
+  reviewDate?: string;
+  digitalStampCode?: string;
+}
+
+export interface MoeSchoolMajorApproval {
+  id: string;
+  schoolName: string;
+  centerCode: string;
+  type:
+    | 'JSS Laboratory Accreditation'
+    | 'New Stream Addition'
+    | 'BoM Charter Constitution'
+    | 'Private School License Renewal'
+    | 'Infrastructure Emergency Grant';
+  details: string;
+  submissionDate: string;
+  status: 'Approved' | 'Under QASO Review' | 'Deferred';
+  priority: 'High' | 'Normal' | 'Urgent';
+  grantAmountKes?: number;
+  approverOfficial?: string;
+}
+
+export type MoeAuthorityLevel =
+  | 'Level 1: Sub-County QASO (Inspectorate)'
+  | 'Level 2: Sub-County Director of Education (SCDE)'
+  | 'Level 3: County Director of Education (CDE - Kiambu)'
+  | 'Level 4: Regional Director of Education (RDE - Central)'
+  | 'Level 5: Director General / Principal Secretary';
+
+export interface MoeSigningOfficer {
+  id: string;
+  name: string;
+  nationalId: string;
+  badgeNumber: string;
+  designation: string;
+  level: MoeAuthorityLevel;
+  subCounty: string; // e.g. "Limuru", "Kiambu Town", "All Kiambu County"
+  signingPin: string; // e.g. "4921"
+  certificateFingerprint: string; // e.g. "SHA256:7B:9A:...:2C"
+  maxCapitationApprovalKes: number; // e.g. 50,000,000
+  canApproveTransfers: boolean;
+  canDisburseFunds: boolean;
+  canGazetteSchools: boolean;
+  canFreezeAudit: boolean;
+  status: 'Active Authorized' | 'Suspended' | 'Revoked';
+  lastSigningTimestamp?: string;
+}
+
+export type MoeReportCategory =
+  | 'Enrollment & Learner Data'
+  | 'Financial Management & Accountability'
+  | 'Curriculum & Academic Performance'
+  | 'Institutional Health, Safety & Governance';
+
+export interface MoeStatutoryReport {
+  id: string;
+  category: MoeReportCategory;
+  reportName:
+    | 'NEMIS / Data Portal Updates'
+    | 'Daily/Monthly Attendance & Admission Registers'
+    | 'Transfer & Admission Forms'
+    | 'Annual Audited Financial Statements'
+    | 'Approved Annual Budget & Procurement Plan'
+    | 'Stores & Fixed Asset Registers'
+    | 'Schemes of Work & Records of Work Done'
+    | 'National Exam Analysis & Assessment Returns'
+    | 'Co-Curricular Progress Reports'
+    | 'Safety & Infrastructure Standards Assessment'
+    | 'School Logbook & Visitors\' Book'
+    | 'Guidance, Counseling & Unrest Monitoring'
+    | 'Punishment / Discipline Record';
+  schoolName: string;
+  centerCode: string;
+  subCounty: string;
+  academicYear: string;
+  term: string;
+  submissionDate: string;
+  status: 'Verified & Endorsed' | 'Pending Review' | 'Flagged for Audit';
+  keyContentsAndPurpose: string;
+  whyCrucial: string;
+  summaryMetrics: Record<string, string | number>;
+  verifiedByOfficer?: string;
+  complianceRatingPercent: number;
+  officialRefNumber: string;
+  uploadedFileName?: string;
+  uploadedFileSize?: string;
+  uploadedDate?: string;
+  uploadedBy?: string;
+  auditorName?: string;
+  auditOpinion?: 'Unqualified Clean Opinion' | 'Qualified with Explanatory Notes' | 'Adverse / Material Discrepancy';
+  budgetApprovedAmountKes?: number;
+  bomMinuteRef?: string;
+  syllabusCoveragePercent?: number;
+  schemeOfWorkTerm?: string;
+  editNotes?: string;
+  lastEditedAt?: string;
+  editedBy?: string;
+}
+
+// =========================================================================
+// EXECUTIVE DIRECTIVE & AUDIT RETURNS DATA TYPES (ANTI-FRAUD & 100% TRANSITION)
+// =========================================================================
+
+export type CampusSuffixType = 'Primary Campus (_PS)' | 'Junior Secondary Campus (_JS)';
+
+export interface InstitutionalSuffixAudit {
+  id: string;
+  baseCode: string; // e.g. "20401823"
+  schoolName: string;
+  suffixCode: string; // e.g. "20401823_PS" or "20401823_JS"
+  campusType: CampusSuffixType;
+  sharedRegistrationCertNo: string;
+  sharedCompound: boolean;
+  acreage: number;
+  enrolledLearners: number;
+  verifiedKemisHeadcount: number;
+  ghostSchoolRiskIndex: 'Verified Clean Operational' | 'Variance Flagged' | 'Ghost Anomaly Suspect';
+  separateDigitalLedgerMaintained: boolean;
+  subCounty: string;
+}
+
+export interface KnecLearnerMappingRecord {
+  id: string;
+  studentName: string;
+  nemisUpi: string;
+  birthCertificateEntryNo: string;
+  campusSuffix: CampusSuffixType;
+  grade: GradeLevel;
+  knecAssessmentIndexNo: string; // e.g. "20401823001"
+  assessmentExamType: 'KPSEA (Grade 6)' | 'KJSEA (Grade 9)';
+  mappingStatus: '100% Verified Mapped' | 'Unmapped Index Number' | 'UPI Discrepancy Flagged';
+  capitationEligibility: boolean;
+  remarks: string;
+}
+
+export interface TeacherWorkloadMatchingReturn {
+  id: string;
+  teacherName: string;
+  tscNumber: string;
+  campusSuffix: CampusSuffixType;
+  primarySubject: string;
+  secondarySubject: string;
+  teachingLoadLessonsPerWeek: number; // Benchmark: 27 lessons
+  utilizationStatus: 'Optimal Load (24-28)' | 'Under-Utilized (<22)' | 'Overloaded (>30)';
+  staffingDeficitArea: 'None (Adequate)' | 'STEM Shortage' | 'Practical / Pre-Tech Deficit' | 'Language Arts Shortage';
+  tpadScore: number; // 0 - 100%
+  subCounty: string;
+}
+
+export interface StemLabFacilityReturn {
+  id: string;
+  schoolName: string;
+  centerCode: string;
+  campusSuffix: CampusSuffixType;
+  integratedScienceLabStatus: 'Fully Equipped & Functional' | 'Deficient Reagents / Glassware' | 'Under Construction / Makeshift';
+  functionalMicroscopes: number;
+  defectiveMicroscopes: number;
+  chemicalReagentsCertStatus: 'Certified Non-Hazardous' | 'Replenishment Due' | 'Expired Reagents Flagged';
+  fumeExtractionSystem: boolean;
+  functionalTabletsLaptops: number;
+  learnerToDeviceRatio: string;
+  powerGridStatus: 'KPLC Grid Functional' | 'Solar Power + Battery Backup' | 'Off-Grid Deficit';
+  connectivityType: 'Optic Fiber BroadBand' | '4G LTE Dedicated' | 'No Internet Connection';
+  tvetPreTechWorkshopStatus: 'Functional Equipment Kits' | 'Basic Tools Only' | 'Non-Compliant';
+  subCounty: string;
+}
+
+export interface SanitationRatioReturn {
+  id: string;
+  schoolName: string;
+  centerCode: string;
+  campusSuffix: CampusSuffixType;
+  totalBoys: number;
+  totalGirls: number;
+  boysLatrinesToilets: number;
+  girlsLatrinesToilets: number;
+  boyToToiletRatio: string; // MoE Benchmark 1:30
+  girlToToiletRatio: string; // MoE Benchmark 1:25
+  totalClassrooms: number;
+  learnerToClassroomRatio: string; // MoE Benchmark 1:45
+  sanitationCompliance: 'Fully Compliant' | 'Overcrowded - Public Health Risk';
+  handwashingPointsServiced: number;
+  subCounty: string;
+}
+
+export interface CapitationReconciliationReturn {
+  id: string;
+  schoolName: string;
+  centerCode: string;
+  campusSuffix: CampusSuffixType;
+  academicYearTerm: string;
+  expectedFundingKes: number;
+  actualDisbursedKes: number;
+  shortfallDebtCarriedKes: number;
+  officialReceiptVoucherRef: string;
+  receiptUploadStatus: 'Uploaded & Reconciled' | 'Pending Receipt Upload';
+  scdeVerifiedBank: string; // e.g. "KCB Bank Kenya - Limuru Branch"
+  bankAccountMasked: string; // e.g. "••••••••1109"
+  bankVerificationStatus: 'SCDE Verified & Locked' | 'Pending Signature Validation';
+  tuitionVoteheadKes: number;
+  operationsVoteheadKes: number;
+  rmiVoteheadKes: number;
+}
+
+export interface UniformCostControlReturn {
+  id: string;
+  schoolName: string;
+  centerCode: string;
+  compulsoryItemsList: string[]; // e.g. "2 Shirts, 2 Skirts/Shorts, 1 Sweater, 1 Tracksuit"
+  schoolPackageTotalCostKes: number;
+  ministryCeilingGuidelineKes: number; // e.g. KES 3,500
+  commercializationStatus: 'Compliant with Price Cap' | 'Commercialization Alert Flagged';
+  subCounty: string;
+}
+
+export interface SneAssessmentReturn {
+  id: string;
+  learnerName: string;
+  nemisUpi: string;
+  schoolName: string;
+  campusSuffix: CampusSuffixType;
+  earcReportNumber: string; // Educational Assessment & Resource Centre No.
+  disabilityCategory: 'Visual Impairment' | 'Hearing Impairment' | 'Physical Disability' | 'Autism Spectrum' | 'Intellectual / Multiple';
+  approvedSNEGrantPerAnnumKes: number; // e.g. KES 4,500
+  assessmentOfficer: string;
+  verificationStatus: 'EARC Validated' | 'Pending Assessment Review';
+}
+
+export interface ComprehensiveSafetyReturn {
+  id: string;
+  schoolName: string;
+  centerCode: string;
+  campusSuffix: CampusSuffixType;
+  fireSafetyCertNumber: string;
+  fireExtinguishersCount: number;
+  lastServicingDate: string;
+  emergencyExitsFunctional: boolean;
+  dormitoryDoorMechanism: 'Outward-Opening Panic Bolts (Compliant)' | 'Inward-Opening Hazard (Violation)';
+  perimeterMasonryFenceStatus: '100% Secured with Manned Gate' | 'Partial Fence Deficit';
+  countyFireMarshalSignOffDate: string;
+  psychosocialIncidentsLoggedCount: number;
+  bullyingPreventionPolicyActive: boolean;
+  subCounty: string;
+}
+
+export interface SeniorTransitionComplianceReturn {
+  id: string;
+  learnerName: string;
+  nemisUpi: string;
+  juniorSchoolOrigin: string;
+  seniorSchoolAssigned: string;
+  admissionStatus: 'Admitted Unconditionally (100% Transition)' | 'Active Non-Reporting Flagged' | 'Financial Levies Barrier Resolved';
+  feeLeviesWaived: boolean;
+  uniformFlexibilityGranted: boolean; // Allowed to report in previous uniform/civilian wear
+  subCountyOfficerAction: string;
+  reportingDate: string;
+}
+
+export interface PriorityActionItem {
+  id: string;
+  priorityArea: 'Data Verification' | 'Infrastructure' | 'Finance' | 'Welfare & Safety';
+  essentialReportReturn: string;
+  targetRecipient: string;
+  status: 'Critical Action Active' | 'Review Completed' | 'Enforcement Dispatched';
+  dueNotice: string;
+}
+
+export interface StreamClassConfig {
+  grade: GradeLevel;
+  streamName: string; // e.g. "7 Amboseli"
+  alias?: string;     // e.g. "Grade 7 East"
+  classTeacherName?: string;
+  capacity?: number;
 }
 
 export interface FuelFleetVehicle {

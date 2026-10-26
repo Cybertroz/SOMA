@@ -103,10 +103,20 @@ export const RolePermissionModal: React.FC<RolePermissionModalProps> = ({
         { key: 'view_audit_logs', label: 'Immutable Security Audit Trail', desc: 'Download logs, PII decrypt records, AES-256 state' },
       ],
     },
+    {
+      name: 'Ministry of Education & State Oversight',
+      icon: Building2,
+      items: [
+        { key: 'moe_county_oversight', label: 'Kiambu County Schools Oversight', desc: 'Inspect operations across all approved public & private schools' },
+        { key: 'moe_fund_disbursement', label: 'Capitation Grants Disbursement', desc: 'Authorize Treasury IFMIS FPE & FDJSE statutory funds' },
+        { key: 'moe_transfer_approval', label: 'NEMIS Inter-School Transfers', desc: 'Constitutional student transfer validation & certificates' },
+      ],
+    },
   ];
 
   const rolesList: { role: UserRole; label: string; badge: string; color: string }[] = [
-    { role: 'principal', label: 'Principal (Super Admin)', badge: 'Full Access', color: 'bg-purple-100 text-purple-800 border-purple-200' },
+    { role: 'moe_director', label: 'MoE County Director (Super Admin)', badge: 'State Authority', color: 'bg-amber-100 text-amber-950 border-amber-300' },
+    { role: 'principal', label: 'Principal (School Super Admin)', badge: 'Full School Access', color: 'bg-purple-100 text-purple-800 border-purple-200' },
     { role: 'bursar', label: 'School Bursar', badge: 'Finance Only', color: 'bg-emerald-100 text-emerald-800 border-emerald-200' },
     { role: 'class_master', label: 'Class Master (G7)', badge: 'Class Head', color: 'bg-blue-100 text-blue-800 border-blue-200' },
     { role: 'teacher', label: 'Subject Teacher', badge: 'Academics Only', color: 'bg-amber-100 text-amber-800 border-amber-200' },

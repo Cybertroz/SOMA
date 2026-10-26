@@ -21,16 +21,36 @@ interface Props {
   students: Learner[];
   broadcasts: SMSBroadcast[];
   onSendBroadcast: (broadcast: SMSBroadcast) => void;
+  initialDraft?: {
+    targetGroup?: 'All Grades' | 'Fee Defaulters' | GradeLevel;
+    messageText?: string;
+    messageType?: SMSBroadcast['type'];
+    targetStudentName?: string;
+  } | null;
+  onClearInitialDraft?: () => void;
 }
 
-export function BulkSMSGateway({ students, broadcasts, onSendBroadcast }: Props) {
-  const [targetGroup, setTargetGroup] = useState<'All Grades' | 'Fee Defaulters' | GradeLevel>('All Grades');
-  const [messageType, setMessageType] = useState<SMSBroadcast['type']>('Fee Reminder');
+export function BulkSMSGateway({ students, broadcasts, onSendBroadcast, initialDraft, onClearInitialDraft }: Props) {
+  const [targetGroup, setTargetGroup] = useState<'All Grades' | 'Fee Defaulters' | GradeLevel>(
+    initialDraft?.targetGroup || 'All Grades'
+  );
+  const [messageType, setMessageType] = useState<SMSBroadcast['type']>(
+    initialDraft?.messageType || 'Fee Reminder'
+  );
   const [messageText, setMessageText] = useState<string>(
+    initialDraft?.messageText ||
     'Dear Parent/Guardian, you are kindly reminded to clear outstanding Term 1 school fees for your learner at Limuru Model School via Paybill 522123 (Account: Learner Adm No). Thank you.'
   );
   const [isSending, setIsSending] = useState(false);
   const [sentSuccess, setSentSuccess] = useState(false);
+
+  React.useEffect(() => {
+    if (initialDraft) {
+      if (initialDraft.targetGroup) setTargetGroup(initialDraft.targetGroup);
+      if (initialDraft.messageType) setMessageType(initialDraft.messageType);
+      if (initialDraft.messageText) setMessageText(initialDraft.messageText);
+    }
+  }, [initialDraft]);
 
   // Filter recipients based on selection
   const recipientStudents = students.filter((s) => {
@@ -115,6 +135,26 @@ export function BulkSMSGateway({ students, broadcasts, onSendBroadcast }: Props)
         {/* Compose Form */}
         <div className="lg:col-span-2 bg-white p-6 rounded-lg border border-slate-200 shadow-xs space-y-5">
           <h3 className="font-semibold text-slate-900 text-sm">Compose & Dispatch Notification</h3>
+
+          {initialDraft && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center justify-between text-xs text-amber-900">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>
+                  Pre-filled template from Fee Ledger: <strong>{initialDraft.targetStudentName ? `Reminder for ${initialDraft.targetStudentName}` : 'Fee Defaulters Template'}</strong>
+                </span>
+              </div>
+              {onClearInitialDraft && (
+                <button
+                  type="button"
+                  onClick={onClearInitialDraft}
+                  className="text-[11px] text-amber-700 underline font-semibold hover:text-amber-900"
+                >
+                  Reset Template
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Quick Template Buttons */}
           <div>

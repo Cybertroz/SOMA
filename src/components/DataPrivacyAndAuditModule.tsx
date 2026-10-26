@@ -93,11 +93,13 @@ export const DataPrivacyAndAuditModule: React.FC<DataPrivacyAndAuditModuleProps>
       'Data Classification': isAnonymized ? 'Anonymized Research Extract' : 'CONFIDENTIAL PII (Restricted)',
     }));
 
-    exportToExcel(
-      exportData,
-      isAnonymized ? 'Limuru_Model_Learners_Anonymized' : 'Limuru_Model_Learners_Confidential_PII',
-      'Learner Security Register'
-    );
+    const filename = isAnonymized ? 'Limuru_Model_Learners_Anonymized' : 'Limuru_Model_Learners_Confidential_PII';
+    const columns = Object.keys(exportData[0] || {}).map((colKey) => ({
+      header: colKey,
+      key: (item: Record<string, unknown>) => item[colKey] ?? '',
+    }));
+
+    exportToExcel(filename, exportData, columns);
 
     onAddAuditLog({
       userId: currentUser.id,

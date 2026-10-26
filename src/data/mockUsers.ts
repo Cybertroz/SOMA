@@ -61,6 +61,16 @@ export const SYSTEM_USERS: AuthUser[] = [
     avatarInitials: 'GA',
     linkedLearnerId: 'std_g7_01', // Brian Omondi, Grade 7 Amboseli
   },
+  {
+    id: 'user_moe_director',
+    name: 'Dr. Belio Kipsang / Beatrice Lukalo',
+    role: 'moe_director',
+    title: 'County Director of Education (CDE) - Kiambu & National Inspector',
+    department: 'Ministry of Education · State Department for Basic Education',
+    email: 'cde.kiambu@education.go.ke',
+    phone: '+254 719 042 001',
+    avatarInitials: 'MOE',
+  },
 ];
 
 export const ROLE_CONFIGS: Record<UserRole, RolePermissionConfig> = {
@@ -90,6 +100,7 @@ export const ROLE_CONFIGS: Record<UserRole, RolePermissionConfig> = {
       'fees',
       'report-card',
       'tpad',
+      'school-moe-returns',
       'audit-logs',
       'parent-portal-preview',
     ],
@@ -125,6 +136,9 @@ export const ROLE_CONFIGS: Record<UserRole, RolePermissionConfig> = {
       manage_kemis_sync: true,
       view_kemis_sync: true,
       view_audit_logs: true,
+      moe_county_oversight: true,
+      moe_fund_disbursement: false,
+      moe_transfer_approval: false,
     },
   },
 
@@ -144,6 +158,7 @@ export const ROLE_CONFIGS: Record<UserRole, RolePermissionConfig> = {
       'assets',
       'kitchen-inventory',
       'textbooks-stationery',
+      'school-moe-returns',
       'audit-logs',
     ],
     permissions: {
@@ -178,6 +193,9 @@ export const ROLE_CONFIGS: Record<UserRole, RolePermissionConfig> = {
       manage_kemis_sync: false,
       view_kemis_sync: false,
       view_audit_logs: true,
+      moe_county_oversight: false,
+      moe_fund_disbursement: false,
+      moe_transfer_approval: false,
     },
   },
 
@@ -198,6 +216,7 @@ export const ROLE_CONFIGS: Record<UserRole, RolePermissionConfig> = {
       'report-card',
       'sms',
       'textbooks-stationery',
+      'school-moe-returns',
     ],
     permissions: {
       view_dashboard: true,
@@ -231,6 +250,9 @@ export const ROLE_CONFIGS: Record<UserRole, RolePermissionConfig> = {
       manage_kemis_sync: false,
       view_kemis_sync: false,
       view_audit_logs: false,
+      moe_county_oversight: false,
+      moe_fund_disbursement: false,
+      moe_transfer_approval: false,
     },
   },
 
@@ -283,6 +305,9 @@ export const ROLE_CONFIGS: Record<UserRole, RolePermissionConfig> = {
       manage_kemis_sync: false,
       view_kemis_sync: false,
       view_audit_logs: false,
+      moe_county_oversight: false,
+      moe_fund_disbursement: false,
+      moe_transfer_approval: false,
     },
   },
 
@@ -325,6 +350,55 @@ export const ROLE_CONFIGS: Record<UserRole, RolePermissionConfig> = {
       manage_kemis_sync: false,
       view_kemis_sync: false,
       view_audit_logs: false,
+      moe_county_oversight: false,
+      moe_fund_disbursement: false,
+      moe_transfer_approval: false,
+    },
+  },
+
+  moe_director: {
+    role: 'moe_director',
+    title: 'Ministry of Education (County Director & National Inspectorate Super Admin)',
+    shortDescription: 'Super authority over Kiambu County Primary & JSS schools, transfer authorizations, capitation disbursements, and national exam oversight.',
+    dataSafeguardNotice: 'Constitutional oversight authority under Basic Education Act No. 14 of 2013 and Republic of Kenya Public Finance Management (PFM) Act.',
+    accessibleTabs: [
+      'moe-oversight',
+    ],
+    permissions: {
+      view_dashboard: false,
+      manage_admissions: false,
+      view_admissions: false,
+      manage_cbc_marks: false,
+      view_cbc_marks: false,
+      manage_fees: false,
+      view_fees: false,
+      manage_daraja_mpesa: false,
+      manage_voteheads_bursaries: false,
+      view_voteheads_bursaries: false,
+      send_bulk_sms: false,
+      manage_payroll: false,
+      view_payroll: false,
+      manage_timetables: false,
+      view_timetables: false,
+      view_knec_analytics: false,
+      manage_portfolios_health: false,
+      view_portfolios_health: false,
+      manage_assets: false,
+      manage_kitchen_inventory: false,
+      manage_textbooks: false,
+      generate_report_cards: false,
+      manage_tpad: false,
+      access_parent_portal: false,
+      manage_teachers: false,
+      view_teachers: false,
+      manage_fleet: false,
+      view_fleet: false,
+      manage_kemis_sync: false,
+      view_kemis_sync: false,
+      view_audit_logs: false,
+      moe_county_oversight: true,
+      moe_fund_disbursement: true,
+      moe_transfer_approval: true,
     },
   },
 };
@@ -334,6 +408,9 @@ export function hasPermission(role: UserRole, permission: PermissionKey): boolea
 }
 
 export function isTabAccessible(role: UserRole, tabId: string): boolean {
+  if (role === 'moe_director') {
+    return tabId === 'moe-oversight';
+  }
   if (role === 'principal') return true;
   if (role === 'parent') {
     return tabId === 'parent-portal';

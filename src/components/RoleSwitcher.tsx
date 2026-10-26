@@ -57,11 +57,15 @@ export const RoleSwitcher: React.FC<RoleSwitcherProps> = ({
         return '👨‍🏫';
       case 'parent':
         return '👨‍👩‍👧';
+      case 'moe_director':
+        return '🇰🇪';
     }
   };
 
   const getRoleBadgeColor = (role: UserRole) => {
     switch (role) {
+      case 'moe_director':
+        return 'bg-amber-100 text-amber-950 border-amber-300';
       case 'principal':
         return 'bg-purple-100 text-purple-900 border-purple-200';
       case 'bursar':
@@ -95,7 +99,8 @@ export const RoleSwitcher: React.FC<RoleSwitcherProps> = ({
             </span>
           </div>
           <span className="text-[10px] text-slate-500 leading-tight">
-            {currentUser.role === 'principal' ? 'Super Admin (All 16 Modules)' :
+            {currentUser.role === 'moe_director' ? 'MoE State Inspectorate (County Super Admin)' :
+             currentUser.role === 'principal' ? 'Super Admin (All 16 Modules)' :
              currentUser.role === 'bursar' ? 'Finance & Accounts Officer' :
              currentUser.role === 'class_master' ? 'Grade 7 Amboseli Master' :
              currentUser.role === 'teacher' ? 'Subject Teacher' : 'Parent of Brian Omondi'}

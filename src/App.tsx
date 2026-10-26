@@ -63,6 +63,10 @@ import {
   VehicleMaintenanceRecord,
   StudentTransportBooking,
   KemisTransferRecord,
+  KiambuSchoolRecord,
+  MoeCapitationDisbursement,
+  MoeTransferApproval,
+  MoeSchoolMajorApproval,
 } from './types/school';
 
 import {
@@ -115,6 +119,16 @@ import { TeacherManagementModule } from './components/TeacherManagementModule';
 import { DataPrivacyAndAuditModule } from './components/DataPrivacyAndAuditModule';
 import { FuelAndFleetLogistics } from './components/FuelAndFleetLogistics';
 import { KemisNemisSyncEngine } from './components/KemisNemisSyncEngine';
+import { ClassRenameModal } from './components/ClassRenameModal';
+import { TeacherTpadModule } from './components/TeacherTpadModule';
+import { FeeReminderSmsModal } from './components/FeeReminderSmsModal';
+import { MinistryOfEducationOversightModule } from './components/MinistryOfEducationOversightModule';
+import {
+  KIAMBU_COUNTY_SCHOOLS,
+  INITIAL_MOE_DISBURSEMENTS,
+  INITIAL_MOE_TRANSFERS,
+  INITIAL_MOE_MAJOR_APPROVALS,
+} from './data/mockMoeData';
 
 // Audio feedback chime helper
 const playSound = (type: 'success' | 'click' | 'error') => {
@@ -153,6 +167,7 @@ const playSound = (type: 'success' | 'click' | 'error') => {
 export default function App() {
   type ActiveTab =
     | 'dashboard'
+    | 'moe-oversight'
     | 'parent-portal'
     | 'teachers'
     | 'kemis'
@@ -188,6 +203,7 @@ export default function App() {
   });
 
   const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
+    if (currentUser.role === 'moe_director') return 'moe-oversight';
     return currentUser.role === 'parent' ? 'parent-portal' : 'dashboard';
   });
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -198,9 +214,11 @@ export default function App() {
   const handleSelectUser = (user: AuthUser) => {
     setCurrentUser(user);
     localStorage.setItem('limuru_model_current_user', JSON.stringify(user));
-    if (user.role === 'parent') {
+    if (user.role === 'moe_director') {
+      setActiveTab('moe-oversight');
+    } else if (user.role === 'parent') {
       setActiveTab('parent-portal');
-    } else if (activeTab === 'parent-portal') {
+    } else if (activeTab === 'parent-portal' || activeTab === 'moe-oversight') {
       setActiveTab('dashboard');
     } else if (!isTabAccessible(user.role, activeTab)) {
       setActiveTab('dashboard');
@@ -282,10 +300,39 @@ export default function App() {
     return saved ? JSON.parse(saved) : INITIAL_SMS_BROADCASTS;
   });
 
+  // Ministry of Education County Oversight & Statutory States
+  const [moeSchools, setMoeSchools] = useState<KiambuSchoolRecord[]>(() => {
+    const saved = localStorage.getItem('limuru_moe_schools');
+    return saved ? JSON.parse(saved) : KIAMBU_COUNTY_SCHOOLS;
+  });
+
+  const [moeDisbursements, setMoeDisbursements] = useState<MoeCapitationDisbursement[]>(() => {
+    const saved = localStorage.getItem('limuru_moe_disbursements');
+    return saved ? JSON.parse(saved) : INITIAL_MOE_DISBURSEMENTS;
+  });
+
+  const [moeTransfers, setMoeTransfers] = useState<MoeTransferApproval[]>(() => {
+    const saved = localStorage.getItem('limuru_moe_transfers');
+    return saved ? JSON.parse(saved) : INITIAL_MOE_TRANSFERS;
+  });
+
+  const [moeMajorApprovals, setMoeMajorApprovals] = useState<MoeSchoolMajorApproval[]>(() => {
+    const saved = localStorage.getItem('limuru_moe_major_approvals');
+    return saved ? JSON.parse(saved) : INITIAL_MOE_MAJOR_APPROVALS;
+  });
+
   // Modal Visibility States
   const [isAdmissionModalOpen, setIsAdmissionModalOpen] = useState(false);
   const [isBulkMarksheetOpen, setIsBulkMarksheetOpen] = useState(false);
   const [isExcelFeeModalOpen, setIsExcelFeeModalOpen] = useState(false);
+  const [isClassRenameModalOpen, setIsClassRenameModalOpen] = useState(false);
+  const [selectedFeeReminderLearner, setSelectedFeeReminderLearner] = useState<Learner | null>(null);
+  const [smsInitialDraft, setSmsInitialDraft] = useState<{
+    targetGroup?: 'All Grades' | 'Fee Defaulters' | GradeLevel;
+    messageText?: string;
+    messageType?: SMSBroadcast['type'];
+    targetStudentName?: string;
+  } | null>(null);
 
   // Filters & Selected records
   const [selectedStudentId, setSelectedStudentId] = useState<string>(learners[0]?.id || 'std_g7_01');
@@ -293,6 +340,8 @@ export default function App() {
   const [admissionsSearch, setAdmissionsSearch] = useState<string>('');
   const [cbcGradeFilter, setCbcGradeFilter] = useState<GradeLevel | 'All'>('All');
   const [cbcSubjectFilter, setCbcSubjectFilter] = useState<string>('mat');
+  const [feeStatusFilter, setFeeStatusFilter] = useState<'All' | 'Defaulter' | 'Partial' | 'Cleared'>('All');
+  const [feeSearchQuery, setFeeSearchQuery] = useState<string>('');
 
   // Audit Logger Helper
   const handleLogAudit = (
@@ -423,6 +472,109 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('limuru_model_sms', JSON.stringify(smsBroadcasts));
   }, [smsBroadcasts]);
+
+  useEffect(() => {
+    localStorage.setItem('limuru_moe_schools', JSON.stringify(moeSchools));
+  }, [moeSchools]);
+
+  useEffect(() => {
+    localStorage.setItem('limuru_moe_disbursements', JSON.stringify(moeDisbursements));
+  }, [moeDisbursements]);
+
+  useEffect(() => {
+    localStorage.setItem('limuru_moe_transfers', JSON.stringify(moeTransfers));
+  }, [moeTransfers]);
+
+  useEffect(() => {
+    localStorage.setItem('limuru_moe_major_approvals', JSON.stringify(moeMajorApprovals));
+  }, [moeMajorApprovals]);
+
+  // Ministry of Education County Action Handlers
+  const handleApproveMoeTransfer = (transferId: string, remarks: string) => {
+    const digitalStamp = `MOE-CDE-KBU-TRANS-${Math.floor(100000 + Math.random() * 900000)}`;
+    setMoeTransfers((prev) =>
+      prev.map((t) => {
+        if (t.id !== transferId) return t;
+        return {
+          ...t,
+          status: 'Approved by Ministry',
+          cdeApprovalRef: digitalStamp,
+          rejectionReason: undefined,
+          timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
+        };
+      })
+    );
+    handleLogAudit(
+      'MOE_TRANSFER_DECISION',
+      `MoE Transfer Approval (${transferId})`,
+      `Approved inter-school transfer clearance with digital stamp ${digitalStamp}. Officer note: ${remarks}`,
+      'Restricted'
+    );
+    if (soundEnabled) playSound('success');
+  };
+
+  const handleRejectMoeTransfer = (transferId: string, reason: string) => {
+    setMoeTransfers((prev) =>
+      prev.map((t) => {
+        if (t.id !== transferId) return t;
+        return {
+          ...t,
+          status: 'Rejected - Stream Capacity Exceeded',
+          rejectionReason: reason,
+          timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
+        };
+      })
+    );
+    handleLogAudit(
+      'MOE_TRANSFER_DECISION',
+      `MoE Transfer Rejection (${transferId})`,
+      `Declined student transfer clearance. Reason: ${reason}`,
+      'Restricted'
+    );
+    if (soundEnabled) playSound('click');
+  };
+
+  const handleApproveMoeDisbursement = (disbursementId: string, ifmisVoucher: string) => {
+    setMoeDisbursements((prev) =>
+      prev.map((d) => {
+        if (d.id !== disbursementId) return d;
+        return {
+          ...d,
+          status: 'Approved & Disbursed',
+          ifmisVoucher,
+          disbursementDate: new Date().toISOString().replace('T', ' ').substring(0, 16),
+        };
+      })
+    );
+    handleLogAudit(
+      'MOE_CAPITATION_DISBURSE',
+      `MoE Capitation Disbursement (${disbursementId})`,
+      `Authorized Treasury IFMIS warrant ${ifmisVoucher} for Kiambu County school capitation grant disbursement.`,
+      'Restricted'
+    );
+    if (soundEnabled) playSound('success');
+  };
+
+  const handleApproveMoeMajorRequest = (requestId: string, approvedBy: string) => {
+    setMoeMajorApprovals((prev) =>
+      prev.map((req) => {
+        if (req.id !== requestId) return req;
+        return {
+          ...req,
+          status: 'Approved',
+          approvedBy,
+          approvalDate: new Date().toISOString().replace('T', ' ').substring(0, 10),
+        };
+      })
+    );
+    handleLogAudit(
+      'MOE_SCHOOL_APPROVAL',
+      `MoE Institutional Accreditation (${requestId})`,
+      `Approved major institutional charter request by ${approvedBy}. Gazetted in County Education Board.`,
+      'Restricted'
+    );
+    if (soundEnabled) playSound('success');
+  };
 
   // Current selected student for report cards
   const currentStudent = useMemo(() => {
@@ -626,6 +778,31 @@ export default function App() {
     if (soundEnabled) playSound('click');
   };
 
+  // Handle Renaming Stream / Class across entire institution
+  const handleRenameStream = (oldStreamName: string, newStreamName: string, grade: GradeLevel) => {
+    setLearners((prev) =>
+      prev.map((s) => {
+        if (s.stream === oldStreamName || (s.grade === grade && s.stream.trim().toLowerCase() === oldStreamName.trim().toLowerCase())) {
+          return { ...s, stream: newStreamName };
+        }
+        return s;
+      })
+    );
+    setTeachers((prev) =>
+      prev.map((t) => {
+        if (t.assignedStream === oldStreamName) {
+          return { ...t, assignedStream: newStreamName };
+        }
+        return t;
+      })
+    );
+    if (soundEnabled) playSound('success');
+  };
+
+  const handleAddNewStream = (grade: GradeLevel, streamName: string) => {
+    if (soundEnabled) playSound('success');
+  };
+
   // Filtered Learners for Admissions Table
   const filteredAdmissionsLearners = learners.filter((s) => {
     if (admissionsGradeFilter !== 'All' && s.grade !== admissionsGradeFilter) return false;
@@ -652,74 +829,132 @@ export default function App() {
       {/* =========================================================================
           TOP INSTITUTIONAL HEADER & BRANDING
           ========================================================================= */}
-      <header className="no-print sticky top-0 z-40 bg-white border-b border-slate-200 shadow-xs">
+      <header className="no-print sticky top-0 z-40 bg-gradient-to-r from-emerald-950 via-emerald-900 to-teal-950 border-b border-emerald-800 shadow-md text-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between gap-4 h-16">
             {/* Wordmark Brand */}
-            <div className="flex items-center gap-3 shrink-0">
-              <div className="w-10 h-10 rounded-lg bg-emerald-800 text-white flex items-center justify-center font-bold shadow-xs">
-                <School className="w-6 h-6" />
+            {currentUser.role === 'moe_director' ? (
+              <div className="flex items-center gap-3 shrink-0">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-400/50 text-amber-300 flex items-center justify-center font-bold shadow-xs">
+                  <span className="text-xl">🇰🇪</span>
+                </div>
+                <div className="flex flex-col">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base font-black tracking-tight text-white uppercase whitespace-nowrap">
+                      Ministry of Education
+                    </span>
+                    <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-400 text-slate-950 font-mono">
+                      State Oversight
+                    </span>
+                  </div>
+                  <span className="text-xs text-amber-200/90 whitespace-nowrap">
+                    Republic of Kenya · State Department for Basic Education · Kiambu County Directorate
+                  </span>
+                </div>
               </div>
-              <div className="flex flex-col">
-                <span className="text-base font-bold tracking-tight text-slate-900 whitespace-nowrap">
-                  Limuru Model Comprehensive School
-                </span>
-                <span className="text-xs text-slate-500 whitespace-nowrap">
-                  MoE Center: 20401823 · Kiambu County · Grade 1 to 9 CBC & NEMIS Integrated
-                </span>
+            ) : (
+              <div className="flex items-center gap-3 shrink-0">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 flex items-center justify-center font-bold shadow-xs">
+                  <School className="w-6 h-6 text-emerald-300" />
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-base font-bold tracking-tight text-white whitespace-nowrap">
+                    Limuru Model Comprehensive School
+                  </span>
+                  <span className="text-xs text-emerald-200/90 whitespace-nowrap">
+                    MoE Center: 20401823 · Kiambu County · Grade 1 to 9 CBC & NEMIS Integrated
+                  </span>
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Quick Action Buttons & Role Switcher */}
             <div className="flex items-center gap-2 shrink-0">
               <button
                 onClick={() => setSoundEnabled(!soundEnabled)}
                 title={soundEnabled ? 'Audio Chime Enabled' : 'Audio Muted'}
-                className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-md transition-colors"
+                className="p-2 text-emerald-200 hover:text-white hover:bg-emerald-800/60 rounded-md transition-colors"
               >
-                {soundEnabled ? <Volume2 className="w-4 h-4 text-emerald-700" /> : <VolumeX className="w-4 h-4" />}
+                {soundEnabled ? <Volume2 className="w-4 h-4 text-emerald-300" /> : <VolumeX className="w-4 h-4 text-slate-400" />}
               </button>
 
-              {/* Admit Learner - only for roles with manage_admissions (Principal) */}
-              {hasPermission(currentUser.role, 'manage_admissions') && (
+              {/* Show MoE quick button for Principal or other roles that have access */}
+              {currentUser.role !== 'moe_director' && isTabAccessible(currentUser.role, 'moe-oversight') && (
                 <button
                   onClick={() => {
-                    setIsAdmissionModalOpen(true);
+                    setActiveTab('moe-oversight');
                     if (soundEnabled) playSound('click');
                   }}
-                  className="px-3 py-1.5 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-md shadow-xs transition-colors flex items-center gap-1.5"
+                  className={`px-3 py-1.5 text-xs font-bold rounded-md shadow-xs transition-colors flex items-center gap-1.5 border ${
+                    activeTab === 'moe-oversight'
+                      ? 'bg-amber-400 text-slate-950 border-amber-300 ring-2 ring-amber-300/40'
+                      : 'bg-amber-950/80 text-amber-200 border-amber-500/50 hover:bg-amber-900'
+                  }`}
+                  title="Ministry of Education Kiambu County Oversight & Statutory Approvals"
                 >
-                  <UserPlus className="w-3.5 h-3.5" />
-                  Admit Learner
+                  <Building2 className="w-3.5 h-3.5 text-amber-400" />
+                  <span>MoE County Portal</span>
                 </button>
               )}
 
-              {/* Upload Marksheet - for Principal, Teacher, Class Master */}
-              {hasPermission(currentUser.role, 'manage_cbc_marks') && (
-                <button
-                  onClick={() => {
-                    setIsBulkMarksheetOpen(true);
-                    if (soundEnabled) playSound('click');
-                  }}
-                  className="hidden sm:flex px-3 py-1.5 text-xs font-semibold text-sky-800 bg-sky-50 hover:bg-sky-100 border border-sky-200 rounded-md shadow-xs transition-colors items-center gap-1.5"
-                >
-                  <Award className="w-3.5 h-3.5" />
-                  Upload Marksheet
-                </button>
-              )}
+              {/* School Specific Actions - ONLY for non-MoE roles */}
+              {currentUser.role !== 'moe_director' && (
+                <>
+                  {/* Rename Classes & Streams Option */}
+                  <button
+                    onClick={() => {
+                      setIsClassRenameModalOpen(true);
+                      if (soundEnabled) playSound('click');
+                    }}
+                    className="px-3 py-1.5 text-xs font-semibold text-amber-200 bg-amber-950/60 hover:bg-amber-900/80 border border-amber-500/40 rounded-md shadow-xs transition-colors flex items-center gap-1.5"
+                    title="Configure and rename school classes and streams"
+                  >
+                    <Layers className="w-3.5 h-3.5 text-amber-300" />
+                    Rename Classes
+                  </button>
 
-              {/* Add Fees via Excel - only for Bursar and Principal */}
-              {hasPermission(currentUser.role, 'manage_fees') && (
-                <button
-                  onClick={() => {
-                    setIsExcelFeeModalOpen(true);
-                    if (soundEnabled) playSound('click');
-                  }}
-                  className="px-3.5 py-1.5 text-xs font-semibold text-white bg-emerald-700 hover:bg-emerald-800 rounded-md shadow-xs transition-colors flex items-center gap-1.5 whitespace-nowrap"
-                >
-                  <FileSpreadsheet className="w-3.5 h-3.5" />
-                  Add Fees via Excel
-                </button>
+                  {/* Admit Learner - only for roles with manage_admissions (Principal) */}
+                  {hasPermission(currentUser.role, 'manage_admissions') && (
+                    <button
+                      onClick={() => {
+                        setIsAdmissionModalOpen(true);
+                        if (soundEnabled) playSound('click');
+                      }}
+                      className="px-3 py-1.5 text-xs font-semibold text-white bg-emerald-700 hover:bg-emerald-600 border border-emerald-500/50 rounded-md shadow-xs transition-colors flex items-center gap-1.5"
+                    >
+                      <UserPlus className="w-3.5 h-3.5" />
+                      Admit Learner
+                    </button>
+                  )}
+
+                  {/* Upload Marksheet - for Principal, Teacher, Class Master */}
+                  {hasPermission(currentUser.role, 'manage_cbc_marks') && (
+                    <button
+                      onClick={() => {
+                        setIsBulkMarksheetOpen(true);
+                        if (soundEnabled) playSound('click');
+                      }}
+                      className="hidden sm:flex px-3 py-1.5 text-xs font-semibold text-sky-100 bg-sky-900/70 hover:bg-sky-800 border border-sky-600/50 rounded-md shadow-xs transition-colors items-center gap-1.5"
+                    >
+                      <Award className="w-3.5 h-3.5" />
+                      Upload Marksheet
+                    </button>
+                  )}
+
+                  {/* Add Fees via Excel - only for Bursar and Principal */}
+                  {hasPermission(currentUser.role, 'manage_fees') && (
+                    <button
+                      onClick={() => {
+                        setIsExcelFeeModalOpen(true);
+                        if (soundEnabled) playSound('click');
+                      }}
+                      className="px-3.5 py-1.5 text-xs font-semibold text-white bg-teal-600 hover:bg-teal-500 border border-teal-400/50 rounded-md shadow-xs transition-colors flex items-center gap-1.5 whitespace-nowrap"
+                    >
+                      <FileSpreadsheet className="w-3.5 h-3.5" />
+                      Add Fees via Excel
+                    </button>
+                  )}
+                </>
               )}
 
               {/* RBAC Persona Switcher Dropdown */}
@@ -734,10 +969,11 @@ export default function App() {
         </div>
 
         {/* Global Primary Navigation Bar (Role-Filtered) */}
-        <div className="border-t border-slate-200 bg-slate-50/80 px-4 sm:px-6 lg:px-8 overflow-x-auto flex items-center justify-between gap-1 py-1.5">
+        <div className="border-t border-emerald-800/60 bg-emerald-950/80 backdrop-blur-sm px-4 sm:px-6 lg:px-8 overflow-x-auto flex items-center justify-between gap-1 py-1.5">
           <div className="flex items-center gap-1">
             {[
               { id: 'dashboard', label: 'Overview', icon: School },
+              { id: 'moe-oversight', label: '🇰🇪 MoE County Oversight', icon: Building2 },
               { id: 'parent-portal', label: 'Parent Portal', icon: Sparkles },
               { id: 'teachers', label: 'Teachers & Faculty', icon: UserCheck },
               { id: 'kemis', label: 'KEMIS / NEMIS Sync', icon: Building2 },
@@ -772,8 +1008,8 @@ export default function App() {
                     }}
                     className={`px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap transition-colors flex items-center gap-1.5 ${
                       isActive
-                        ? 'bg-emerald-800 text-white shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/70'
+                        ? 'bg-emerald-500 text-slate-950 font-bold shadow-xs'
+                        : 'text-emerald-100/80 hover:text-white hover:bg-emerald-800/60'
                     }`}
                   >
                     <Icon className="w-3.5 h-3.5" />
@@ -797,20 +1033,41 @@ export default function App() {
       {/* Term Kicker Info Strip */}
       <div className="no-print bg-slate-900 text-slate-300 py-1.5 px-4 text-xs border-b border-slate-800">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
-          <div className="flex items-center gap-3">
-            <span className="font-semibold text-emerald-400">Limuru Model Comprehensive School</span>
-            <span aria-hidden="true" className="text-slate-600">·</span>
-            <span>MoE Academic Year 2026 · Term 1 (Week 7 of 13)</span>
-            <span aria-hidden="true" className="text-slate-600">·</span>
-            <span>Kiambu County / Limuru Sub-County</span>
-          </div>
-          <div className="flex items-center gap-4 text-slate-400 text-[11px]">
-            <span>Enrolled: <strong className="text-white tabular-nums">{learners.length} Learners</strong></span>
-            <span aria-hidden="true" className="text-slate-600">·</span>
-            <span>Fee Efficiency: <strong className="text-emerald-400 tabular-nums">{summaryMetrics.feeCollectionRate}%</strong></span>
-            <span aria-hidden="true" className="text-slate-600">·</span>
-            <span>Bursaries: <strong className="text-emerald-400 tabular-nums">KES {summaryMetrics.totalBursaries.toLocaleString()}</strong></span>
-          </div>
+          {currentUser.role === 'moe_director' ? (
+            <>
+              <div className="flex items-center gap-3">
+                <span className="font-bold text-amber-400">Republic of Kenya · Ministry of Education</span>
+                <span aria-hidden="true" className="text-slate-600">·</span>
+                <span>Kiambu County Directorate (Headquarters Hub)</span>
+                <span aria-hidden="true" className="text-slate-600">·</span>
+                <span>Basic Education Act No. 14 of 2013 Statutory Compliance</span>
+              </div>
+              <div className="flex items-center gap-4 text-slate-400 text-[11px]">
+                <span>County Approved Schools: <strong className="text-white tabular-nums">{moeSchools.length} Institutions</strong></span>
+                <span aria-hidden="true" className="text-slate-600">·</span>
+                <span>NEMIS Headcount: <strong className="text-emerald-400 tabular-nums">100% Validated</strong></span>
+                <span aria-hidden="true" className="text-slate-600">·</span>
+                <span>Security: <strong className="text-amber-400 font-mono">TLS 1.3 PKI Seal</strong></span>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center gap-3">
+                <span className="font-semibold text-emerald-400">Limuru Model Comprehensive School</span>
+                <span aria-hidden="true" className="text-slate-600">·</span>
+                <span>MoE Academic Year 2026 · Term 1 (Week 7 of 13)</span>
+                <span aria-hidden="true" className="text-slate-600">·</span>
+                <span>Kiambu County / Limuru Sub-County</span>
+              </div>
+              <div className="flex items-center gap-4 text-slate-400 text-[11px]">
+                <span>Enrolled: <strong className="text-white tabular-nums">{learners.length} Learners</strong></span>
+                <span aria-hidden="true" className="text-slate-600">·</span>
+                <span>Fee Efficiency: <strong className="text-emerald-400 tabular-nums">{summaryMetrics.feeCollectionRate}%</strong></span>
+                <span aria-hidden="true" className="text-slate-600">·</span>
+                <span>Bursaries: <strong className="text-emerald-400 tabular-nums">KES {summaryMetrics.totalBursaries.toLocaleString()}</strong></span>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -936,20 +1193,48 @@ export default function App() {
             </div>
 
             {/* Quick Action Hero Banner */}
-            <div className="bg-gradient-to-r from-emerald-900 via-slate-900 to-slate-900 text-white rounded-xl p-6 shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-              <div className="space-y-1">
-                <span className="text-xs font-mono text-emerald-400 uppercase tracking-widest">
-                  Limuru Model School Integrated ERP Engine
-                </span>
-                <h3 className="text-xl font-bold text-white">
-                  Safaricom Daraja M-Pesa, Voteheads, Bulk SMS & Timetabling
+            <div className="bg-gradient-to-r from-emerald-950 via-slate-900 to-teal-950 text-white rounded-2xl p-6 shadow-md border border-emerald-800/60 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold bg-emerald-900/90 text-emerald-300 border border-emerald-700/60 uppercase tracking-wider">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                    Ministry of Education CBC Academic & Financial Command Center
+                  </span>
+                  <span className="text-slate-400 text-xs">·</span>
+                  <span className="text-xs font-semibold text-emerald-200">
+                    Term 1 Week 7 · Kiambu Sub-County
+                  </span>
+                </div>
+
+                <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+                  Limuru Model Comprehensive School — Operations & Academic Governance
                 </h3>
                 <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
-                  Real-time reconciliation through Safaricom C2B Paybill 522123, automated KRA PAYE / SHA / NSSF payroll calculations, and one-click MoE CBC progress reports.
+                  Real-time administration connecting continuous CBC student competency assessments directly to teacher TPAD 2.0 appraisals, automated Safaricom Paybill 522123 fee reconciliation, and live MoE KEMIS capitation auditing.
                 </p>
+
+                {/* Live System Operational Chips */}
+                <div className="flex flex-wrap gap-2 pt-1 text-[11px]">
+                  <span className="px-2 py-0.5 rounded bg-slate-800/90 text-slate-300 border border-slate-700">
+                    Safaricom Daraja: <strong className="text-emerald-400">Paybill 522123 Live</strong>
+                  </span>
+                  <span className="px-2 py-0.5 rounded bg-slate-800/90 text-slate-300 border border-slate-700">
+                    KEMIS Handshake: <strong className="text-emerald-400">Civil Registry Active</strong>
+                  </span>
+                  <span className="px-2 py-0.5 rounded bg-slate-800/90 text-slate-300 border border-slate-700">
+                    Teacher TPAD 2.0: <strong className="text-emerald-400">Class Performance Linked</strong>
+                  </span>
+                </div>
               </div>
 
               <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+                <button
+                  onClick={() => setIsClassRenameModalOpen(true)}
+                  className="px-4 py-2 bg-amber-600/90 hover:bg-amber-600 text-white rounded-lg text-xs font-bold shadow-xs flex items-center gap-2 transition-colors border border-amber-400/40"
+                >
+                  <Layers className="w-4 h-4" />
+                  Rename Classes & Streams
+                </button>
                 <button
                   onClick={() => setActiveTab('admissions')}
                   className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-semibold shadow-xs flex items-center gap-2 transition-colors"
@@ -958,11 +1243,11 @@ export default function App() {
                   Grade 1-9 Registry
                 </button>
                 <button
-                  onClick={() => setActiveTab('daraja')}
+                  onClick={() => setActiveTab('tpad')}
                   className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 rounded-lg text-xs font-semibold shadow-xs flex items-center gap-2 transition-colors"
                 >
-                  <Smartphone className="w-4 h-4 text-emerald-400" />
-                  M-Pesa Webhook Sync
+                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                  TPAD Appraisals
                 </button>
               </div>
             </div>
@@ -1408,6 +1693,8 @@ export default function App() {
             students={learners}
             broadcasts={smsBroadcasts}
             onSendBroadcast={(b) => setSmsBroadcasts((prev) => [b, ...prev])}
+            initialDraft={smsInitialDraft}
+            onClearInitialDraft={() => setSmsInitialDraft(null)}
           />
         )}
 
@@ -1458,90 +1745,225 @@ export default function App() {
         )}
 
         {/* VIEW 14: FEE LEDGER & EXCEL RECONCILIATION */}
-        {activeTab === 'fees' && (
-          <div className="space-y-6">
-            <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div>
-                <h2 className="text-lg font-bold text-slate-900">
-                  Limuru Model School Fee Ledger & Excel Accounting
-                </h2>
-                <p className="text-xs text-slate-500 mt-1">
-                  Reconciliation with Safaricom Paybill 522123, NG-CDF Bursaries, and Excel upload
-                </p>
+        {activeTab === 'fees' && (() => {
+          const defaulters = learners.filter((s) => s.fees.status === 'Defaulter');
+          const partials = learners.filter((s) => s.fees.status === 'Partial');
+          const cleared = learners.filter((s) => s.fees.status === 'Cleared');
+          const totalArrears = learners.reduce((acc, s) => acc + s.fees.balance, 0);
+
+          const displayedFeeLearners = learners.filter((s) => {
+            if (feeStatusFilter !== 'All' && s.fees.status !== feeStatusFilter) return false;
+            if (feeSearchQuery.trim()) {
+              const q = feeSearchQuery.toLowerCase();
+              return (
+                s.name.toLowerCase().includes(q) ||
+                s.admissionNo.toLowerCase().includes(q) ||
+                s.stream.toLowerCase().includes(q) ||
+                s.guardianPhone.toLowerCase().includes(q) ||
+                s.guardianName.toLowerCase().includes(q)
+              );
+            }
+            return true;
+          });
+
+          const handleBulkRemindAllDefaulters = () => {
+            setSmsInitialDraft({
+              targetGroup: 'Fee Defaulters',
+              messageType: 'Fee Reminder',
+              messageText: `Dear Parent/Guardian, Limuru Model School kindly reminds you to settle outstanding Term 1 school fees via Safaricom Paybill 522123 (Account: Learner Adm No). Early clearance facilitates uninterrupted learning. Inquiries: 0722000000. Thank you.`,
+              targetStudentName: `${defaulters.length + partials.length} Defaulters & Partial Accounts`,
+            });
+            setActiveTab('sms');
+            if (soundEnabled) playSound('click');
+          };
+
+          return (
+            <div className="space-y-6">
+              {/* Header Card */}
+              <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">
+                    Limuru Model School Fee Ledger & Excel Accounting
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Reconciliation with Safaricom Paybill 522123, NG-CDF Bursaries, automated SMS fee reminders, and Excel upload
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setIsExcelFeeModalOpen(true)}
+                    className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5" />
+                    Add Fees via Excel (.csv)
+                  </button>
+                </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setIsExcelFeeModalOpen(true)}
-                  className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors"
-                >
-                  <FileSpreadsheet className="w-3.5 h-3.5" />
-                  Add Fees via Excel (.csv)
-                </button>
-              </div>
-            </div>
+              {/* Arrears Alert Banner */}
+              {(defaulters.length > 0 || partials.length > 0) && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-amber-950">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-lg bg-amber-200/70 border border-amber-300 text-amber-800 flex items-center justify-center font-bold shrink-0">
+                      <AlertTriangle className="w-5 h-5 text-amber-800" />
+                    </div>
+                    <div>
+                      <strong className="text-xs sm:text-sm font-bold block">
+                        Fee Arrears Action Needed: {defaulters.length} Defaulters & {partials.length} Partial Balances
+                      </strong>
+                      <span className="text-[11px] text-amber-800">
+                        Total Arrears: <strong className="font-mono font-bold">KES {totalArrears.toLocaleString()}</strong> · Send direct SMS reminders with pre-filled payment details to guardian phones.
+                      </span>
+                    </div>
+                  </div>
 
-            {/* Table */}
-            <div className="bg-white rounded-lg border border-slate-200 shadow-xs overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 uppercase font-semibold">
-                    <tr>
-                      <th className="p-3">Admission No</th>
-                      <th className="p-3">Learner Name</th>
-                      <th className="p-3">Grade & Stream</th>
-                      <th className="p-3">Guardian Mobile</th>
-                      <th className="p-3 text-right">Term Fee</th>
-                      <th className="p-3 text-right">Bursary Applied</th>
-                      <th className="p-3 text-right">Total Paid</th>
-                      <th className="p-3 text-right">Outstanding Bal</th>
-                      <th className="p-3 text-center">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {learners.map((s) => (
-                      <tr key={s.id} className="hover:bg-slate-50">
-                        <td className="p-3 font-mono font-bold text-slate-900">{s.admissionNo}</td>
-                        <td className="p-3 font-semibold text-slate-900">{s.name}</td>
-                        <td className="p-3 text-slate-700">{s.stream}</td>
-                        <td className="p-3 font-mono text-slate-600">{s.guardianPhone}</td>
-                        <td className="p-3 text-right tabular-nums text-slate-700">
-                          KES {s.fees.totalTermFee.toLocaleString()}
-                        </td>
-                        <td className="p-3 text-right tabular-nums font-bold text-sky-700">
-                          KES {s.fees.bursaryApplied.toLocaleString()}
-                        </td>
-                        <td className="p-3 text-right tabular-nums font-bold text-emerald-800">
-                          KES {s.fees.paidAmount.toLocaleString()}
-                        </td>
-                        <td className="p-3 text-right tabular-nums font-bold">
-                          {s.fees.balance === 0 ? (
-                            <span className="text-emerald-700">KES 0</span>
-                          ) : (
-                            <span className="text-rose-600">KES {s.fees.balance.toLocaleString()}</span>
-                          )}
-                        </td>
-                        <td className="p-3 text-center">
-                          <span
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                              s.fees.status === 'Cleared'
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : s.fees.status === 'Partial'
-                                ? 'bg-amber-100 text-amber-800'
-                                : 'bg-rose-100 text-rose-800'
-                            }`}
-                          >
-                            {s.fees.status}
-                          </span>
-                        </td>
+                  <button
+                    onClick={handleBulkRemindAllDefaulters}
+                    className="px-4 py-2 bg-amber-800 hover:bg-amber-900 text-white rounded-lg text-xs font-bold shadow-xs flex items-center gap-1.5 transition-colors shrink-0"
+                  >
+                    <Radio className="w-3.5 h-3.5" />
+                    Bulk SMS Remind All Defaulters ({defaulters.length + partials.length})
+                  </button>
+                </div>
+              )}
+
+              {/* Filter Tabs & Search Bar */}
+              <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="flex items-center gap-1 overflow-x-auto w-full sm:w-auto">
+                  {(
+                    [
+                      { id: 'All', label: 'All Learners', count: learners.length },
+                      { id: 'Defaulter', label: 'Defaulters Only', count: defaulters.length },
+                      { id: 'Partial', label: 'Partial Balances', count: partials.length },
+                      { id: 'Cleared', label: 'Cleared', count: cleared.length },
+                    ] as const
+                  ).map((filter) => {
+                    const isSelected = feeStatusFilter === filter.id;
+                    return (
+                      <button
+                        key={filter.id}
+                        onClick={() => {
+                          setFeeStatusFilter(filter.id);
+                          if (soundEnabled) playSound('click');
+                        }}
+                        className={`px-3 py-1.5 rounded-md text-xs font-bold transition-colors whitespace-nowrap flex items-center gap-1.5 ${
+                          isSelected
+                            ? 'bg-slate-900 text-white shadow-xs'
+                            : 'bg-slate-50 text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        {filter.label}
+                        <span
+                          className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                            isSelected ? 'bg-slate-800 text-slate-200' : 'bg-slate-200 text-slate-700'
+                          }`}
+                        >
+                          {filter.count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="relative w-full sm:w-64">
+                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search by student, adm, phone..."
+                    value={feeSearchQuery}
+                    onChange={(e) => setFeeSearchQuery(e.target.value)}
+                    className="w-full pl-8 pr-3 py-1.5 border border-slate-200 rounded-md text-xs font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                  />
+                </div>
+              </div>
+
+              {/* Fee Ledger Table */}
+              <div className="bg-white rounded-lg border border-slate-200 shadow-xs overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 uppercase font-semibold">
+                      <tr>
+                        <th className="p-3">Admission No</th>
+                        <th className="p-3">Learner Name</th>
+                        <th className="p-3">Grade & Stream</th>
+                        <th className="p-3">Guardian Mobile</th>
+                        <th className="p-3 text-right">Term Fee</th>
+                        <th className="p-3 text-right">Bursary Applied</th>
+                        <th className="p-3 text-right">Total Paid</th>
+                        <th className="p-3 text-right">Outstanding Bal</th>
+                        <th className="p-3 text-center">Status</th>
+                        <th className="p-3 text-right">SMS Reminder Action</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {displayedFeeLearners.map((s) => {
+                        const hasArrears = s.fees.status === 'Defaulter' || s.fees.status === 'Partial';
+
+                        return (
+                          <tr key={s.id} className="hover:bg-slate-50">
+                            <td className="p-3 font-mono font-bold text-slate-900">{s.admissionNo}</td>
+                            <td className="p-3 font-semibold text-slate-900">{s.name}</td>
+                            <td className="p-3 text-slate-700">{s.stream}</td>
+                            <td className="p-3 font-mono text-slate-600">{s.guardianPhone}</td>
+                            <td className="p-3 text-right tabular-nums text-slate-700">
+                              KES {s.fees.totalTermFee.toLocaleString()}
+                            </td>
+                            <td className="p-3 text-right tabular-nums font-bold text-sky-700">
+                              KES {s.fees.bursaryApplied.toLocaleString()}
+                            </td>
+                            <td className="p-3 text-right tabular-nums font-bold text-emerald-800">
+                              KES {s.fees.paidAmount.toLocaleString()}
+                            </td>
+                            <td className="p-3 text-right tabular-nums font-bold">
+                              {s.fees.balance === 0 ? (
+                                <span className="text-emerald-700">KES 0</span>
+                              ) : (
+                                <span className="text-rose-600">KES {s.fees.balance.toLocaleString()}</span>
+                              )}
+                            </td>
+                            <td className="p-3 text-center">
+                              <span
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                  s.fees.status === 'Cleared'
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : s.fees.status === 'Partial'
+                                    ? 'bg-amber-100 text-amber-800'
+                                    : 'bg-rose-100 text-rose-800'
+                                }`}
+                              >
+                                {s.fees.status}
+                              </span>
+                            </td>
+                            <td className="p-3 text-right">
+                              {hasArrears ? (
+                                <button
+                                  onClick={() => {
+                                    setSelectedFeeReminderLearner(s);
+                                    if (soundEnabled) playSound('click');
+                                  }}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-lg text-xs font-bold shadow-2xs transition-colors shrink-0"
+                                  title={`Send fee arrears reminder SMS to ${s.guardianName} (${s.guardianPhone})`}
+                                >
+                                  <Smartphone className="w-3.5 h-3.5 text-emerald-300" />
+                                  Send SMS Reminder
+                                </button>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-[11px] text-emerald-700 font-semibold bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200">
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Cleared
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* VIEW 15: OFFICIAL MOE PRINT-READY REPORT CARDS */}
         {activeTab === 'report-card' && (
@@ -1702,56 +2124,14 @@ export default function App() {
           </div>
         )}
 
-        {/* VIEW 16: TEACHER TPAD APPRAISALS */}
+        {/* VIEW 16: TEACHER TPAD 2.0 CONNECTED TO CLASS STUDENT PERFORMANCE */}
         {activeTab === 'tpad' && (
-          <div className="space-y-6">
-            <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div>
-                <h2 className="text-lg font-bold text-slate-900">
-                  TSC Teacher Performance Appraisal and Development (TPAD 2.0)
-                </h2>
-                <p className="text-xs text-slate-500 mt-1">
-                  Limuru Model School · Evaluation on TSC competency standards, syllabus coverage and lesson plans
-                </p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {[
-                { name: 'Mr. Patrick Wanjala', tsc: 'TSC/398201', role: 'Deputy Principal / Math Lead', score: 4.8, coverage: 92 },
-                { name: 'Mdm. Grace Ndung’u', tsc: 'TSC/412891', role: 'Senior Teacher / English Lead', score: 4.7, coverage: 88 },
-                { name: 'Dr. Faith Chebet', tsc: 'TSC/381902', role: 'Head of Sciences', score: 4.9, coverage: 94 },
-                { name: 'Mr. Dennis Wekesa', tsc: 'TSC/520441', role: 'Agriculture Coordinator', score: 4.5, coverage: 84 },
-                { name: 'Eng. Kennedy Mutua', tsc: 'TSC/493820', role: 'Pre-Technical Studies Specialist', score: 4.6, coverage: 87 },
-              ].map((tch, idx) => (
-                <div key={idx} className="bg-white rounded-lg border border-slate-200 shadow-xs p-5 space-y-4">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <strong className="text-slate-900 text-sm block">{tch.name}</strong>
-                      <span className="text-xs text-slate-500 font-mono">{tch.tsc}</span>
-                      <div className="text-xs text-emerald-800 font-medium mt-0.5">{tch.role}</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-xl font-bold text-slate-900 tabular-nums">{tch.score}/5.0</div>
-                      <span className="text-[10px] bg-emerald-50 text-emerald-800 font-bold px-1.5 py-0.5 rounded">
-                        Appraised
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="space-y-1 text-xs">
-                    <div className="flex justify-between text-slate-600">
-                      <span>Syllabus Coverage:</span>
-                      <strong className="text-slate-900">{tch.coverage}%</strong>
-                    </div>
-                    <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                      <div style={{ width: `${tch.coverage}%` }} className="bg-emerald-600 h-full" />
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+          <TeacherTpadModule
+            currentUser={currentUser}
+            teachers={teachers}
+            learners={learners}
+            onLogAudit={handleLogAudit}
+          />
         )}
 
         {/* VIEW 17: TEACHER & PEDAGOGICAL STAFF DIRECTORY */}
@@ -1807,6 +2187,23 @@ export default function App() {
                 log.sensitivityLevel
               )
             }
+          />
+        )}
+
+        {/* VIEW 21: MINISTRY OF EDUCATION COUNTY OVERSIGHT & STATUTORY APPROVALS */}
+        {activeTab === 'moe-oversight' && (
+          <MinistryOfEducationOversightModule
+            currentUser={currentUser}
+            schools={moeSchools}
+            disbursements={moeDisbursements}
+            transfers={moeTransfers}
+            majorApprovals={moeMajorApprovals}
+            limuruLearners={learners}
+            onApproveTransfer={handleApproveMoeTransfer}
+            onRejectTransfer={handleRejectMoeTransfer}
+            onApproveDisbursement={handleApproveMoeDisbursement}
+            onApproveMajorRequest={handleApproveMoeMajorRequest}
+            onLogAudit={handleLogAudit}
           />
         )}
       </>
@@ -1865,6 +2262,35 @@ export default function App() {
       onClose={() => setIsAuthModalOpen(false)}
       onLoginSuccess={handleLoginSuccess}
       currentRole={currentUser.role}
+    />
+  )}
+
+  {/* Class & Stream Nomenclature / Rename Manager Modal */}
+  {isClassRenameModalOpen && (
+    <ClassRenameModal
+      isOpen={isClassRenameModalOpen}
+      onClose={() => setIsClassRenameModalOpen(false)}
+      learners={learners}
+      teachers={teachers}
+      onRenameStream={handleRenameStream}
+      onAddNewStream={handleAddNewStream}
+      onLogAudit={handleLogAudit}
+    />
+  )}
+
+  {/* Send Fee Arrears SMS Reminder Modal */}
+  {selectedFeeReminderLearner && (
+    <FeeReminderSmsModal
+      isOpen={!!selectedFeeReminderLearner}
+      onClose={() => setSelectedFeeReminderLearner(null)}
+      learner={selectedFeeReminderLearner}
+      onSendInstantReminder={(b) => setSmsBroadcasts((prev) => [b, ...prev])}
+      onOpenInBulkGateway={(draft) => {
+        setSmsInitialDraft(draft);
+        setActiveTab('sms');
+        if (soundEnabled) playSound('click');
+      }}
+      onLogAudit={handleLogAudit}
     />
   )}
 

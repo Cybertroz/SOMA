@@ -269,10 +269,41 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 </button>
               </form>
 
+              {/* MOE INSPECTORATE SUPER SIGN IN */}
+              <div className="mt-4 p-3 bg-gradient-to-r from-emerald-950 via-slate-900 to-teal-950 rounded-xl border border-emerald-500/60 text-white shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-lg bg-amber-400/20 border border-amber-400/50 text-amber-300 flex items-center justify-center font-bold text-base shrink-0">
+                    🇰🇪
+                  </div>
+                  <div>
+                    <div className="text-xs font-black text-white flex items-center gap-1.5">
+                      Ministry of Education Super Sign In
+                      <span className="text-[9px] bg-amber-400 text-slate-950 font-black px-1.5 py-0.2 rounded uppercase">
+                        State Inspectorate
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-emerald-200">
+                      County Director of Education (CDE Kiambu) & National DQAS
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const moeUser = SYSTEM_USERS.find((u) => u.role === 'moe_director');
+                    if (moeUser) handleQuickPersonaSelect(moeUser);
+                  }}
+                  className="w-full sm:w-auto px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-lg text-xs shadow-xs transition-colors shrink-0 flex items-center justify-center gap-1.5"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5" /> Super Login
+                </button>
+              </div>
+
               {/* 1-Click Persona Quick-Logins */}
               <div className="pt-4 border-t border-slate-200">
                 <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2">
-                  Or 1-Click Instant Login as:
+                  Or 1-Click Institutional Persona Login:
                 </span>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {SYSTEM_USERS.map((usr) => (

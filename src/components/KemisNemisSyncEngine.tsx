@@ -112,7 +112,13 @@ export const KemisNemisSyncEngine: React.FC<KemisNemisSyncEngineProps> = ({
       'School Center Code': '20401823',
     }));
 
-    exportToExcel(kemisRows, 'MoE_KEMIS_Batch_Headcount_Export_2026', 'KEMIS Headcount Format');
+    const filename = 'MoE_KEMIS_Batch_Headcount_Export_2026';
+    const columns = Object.keys(kemisRows[0] || {}).map((colKey) => ({
+      header: colKey,
+      key: (item: Record<string, unknown>) => item[colKey] ?? '',
+    }));
+
+    exportToExcel(filename, kemisRows, columns);
 
     onLogAudit(
       'KEMIS_SYNC',
