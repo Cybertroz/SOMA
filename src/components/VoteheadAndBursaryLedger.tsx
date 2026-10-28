@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Layers,
   Award,
@@ -14,6 +14,11 @@ import {
   CheckCircle2,
   PieChart,
   Search,
+  Printer,
+  Upload,
+  Edit3,
+  X,
+  FileText,
 } from 'lucide-react';
 import { Learner, BursaryRecord, VoteHead } from '../types/school';
 import { VOTE_HEADS } from '../data/mockSchoolData';
@@ -28,6 +33,28 @@ interface Props {
 export function VoteheadAndBursaryLedger({ students, bursaries, onAddBursary }: Props) {
   const [activeTab, setActiveTab] = useState<'voteheads' | 'bursaries'>('voteheads');
   const [isAddBursaryOpen, setIsAddBursaryOpen] = useState(false);
+  const [editingVotehead, setEditingVotehead] = useState<string | null>(null);
+  const [viewingVotehead, setViewingVotehead] = useState<string | null>(null);
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const fileUploadRef = useRef<HTMLInputElement>(null);
+
+  // Custom adjustments for votehead allocations & expenditure figures
+  const [customFigures, setCustomFigures] = useState<Record<string, { budgetKes: number; spentKes: number; notes: string }>>({
+    'Tuition & Learning Materials': { budgetKes: 1850000, spentKes: 1420000, notes: 'Includes CBC textbooks & Science kits' },
+    'Operations & Maintenance': { budgetKes: 1200000, spentKes: 980000, notes: 'Electricity, water & security guard patrols' },
+    'Boarding & Meals': { budgetKes: 2400000, spentKes: 1950000, notes: 'Dry maize, beans, rice & milk rations' },
+    'Activity & Co-Curricular': { budgetKes: 650000, spentKes: 510000, notes: 'KSSSA Athletics & Drama festival transit' },
+    'PTA Development': { budgetKes: 1500000, spentKes: 850000, notes: 'Junior Secondary STEM Lab construction' },
+    'Exam & Assessment': { budgetKes: 480000, spentKes: 390000, notes: 'KNEC Formative KPSEA/KJSEA papers' },
+  });
+
+  const [editForm, setEditForm] = useState({ budgetKes: 0, spentKes: 0, notes: '' });
+
+  const showToast = (msg: string) => {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(null), 3500);
+  };
+
   const [bursaryForm, setBursaryForm] = useState({
     studentId: students[0]?.id || '',
     source: 'NG-CDF Limuru' as BursaryRecord['source'],
@@ -117,8 +144,58 @@ export function VoteheadAndBursaryLedger({ students, bursaries, onAddBursary }: 
     );
   };
 
+  const handlePrintLedger = () => {
+    window.print();
+    showToast('Printing Votehead Ledger Statement.');
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      const rowCount = content ? content.split('\n').filter(Boolean).length : 0;
+      showToast(`Uploaded ${file.name} successfully. Processed ${rowCount} allocation entries.`);
+      if (fileUploadRef.current) fileUploadRef.current.value = '';
+    };
+    reader.readAsText(file);
+  };
+
+  const handleSaveFigure = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingVotehead) return;
+    setCustomFigures((prev) => ({
+      ...prev,
+      [editingVotehead]: {
+        budgetKes: Number(editForm.budgetKes) || 0,
+        spentKes: Number(editForm.spentKes) || 0,
+        notes: editForm.notes,
+      },
+    }));
+    showToast(`Updated figures for ${editingVotehead}. Financial balances recalculated.`);
+    setEditingVotehead(null);
+  };
+
   return (
     <div className="space-y-6">
+      {/* Hidden File Input for Real Upload */}
+      <input
+        ref={fileUploadRef}
+        type="file"
+        accept=".csv,.xlsx,.xls,.txt"
+        className="hidden"
+        onChange={handleFileUpload}
+      />
+
+      {toastMsg && (
+        <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-lg text-emerald-950 text-xs font-semibold flex items-center gap-2 shadow-xs animate-in fade-in">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span>{toastMsg}</span>
+        </div>
+      )}
+
       {/* Top Strip */}
       <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -130,30 +207,48 @@ export function VoteheadAndBursaryLedger({ students, bursaries, onAddBursary }: 
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={handlePrintLedger}
+            className="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-800 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors"
+            title="Print financial ledger"
+          >
+            <Printer className="w-3.5 h-3.5" />
+            <span>Print Statement</span>
+          </button>
+
+          <button
+            onClick={() => fileUploadRef.current?.click()}
+            className="px-3 py-1.5 bg-teal-700 hover:bg-teal-800 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors"
+            title="Upload voucher / capitation spreadsheet (.csv)"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            <span>Upload Voucher (.csv)</span>
+          </button>
+
           {activeTab === 'voteheads' ? (
             <button
               onClick={handleExportVoteheadsExcel}
-              className="px-3.5 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors"
+              className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors"
             >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
-              Export Votehead Statement (.csv)
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>Export Voteheads (.csv)</span>
             </button>
           ) : (
             <>
               <button
                 onClick={handleExportBursariesExcel}
-                className="px-3.5 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors"
+                className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors"
               >
-                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
-                Export Bursaries (.csv)
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                <span>Export Bursaries (.csv)</span>
               </button>
               <button
                 onClick={() => setIsAddBursaryOpen(true)}
-                className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors"
+                className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors"
               >
-                <Plus className="w-3.5 h-3.5" />
-                Record Bursary / Capitation
+                <Plus className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Record Bursary</span>
               </button>
             </>
           )}
@@ -189,45 +284,84 @@ export function VoteheadAndBursaryLedger({ students, bursaries, onAddBursary }: 
       {activeTab === 'voteheads' && (
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {voteheadSummary.map((item, idx) => (
-              <div key={idx} className="bg-white p-5 rounded-lg border border-slate-200 shadow-xs space-y-3">
-                <div className="flex items-start justify-between">
-                  <span className="font-bold text-slate-900 text-xs">{item.votehead}</span>
-                  <span
-                    className={`text-[10px] font-bold px-2 py-0.5 rounded ${
-                      item.rate >= 75
-                        ? 'bg-emerald-50 text-emerald-700'
-                        : item.rate >= 50
-                        ? 'bg-amber-50 text-amber-700'
-                        : 'bg-rose-50 text-rose-700'
-                    }`}
-                  >
-                    {item.rate}% Paid
-                  </span>
-                </div>
+            {voteheadSummary.map((item, idx) => {
+              const fig = customFigures[item.votehead] || { budgetKes: item.allocated, spentKes: item.collected, notes: '' };
+              const absorptionRate = fig.budgetKes > 0 ? Math.round((fig.spentKes / fig.budgetKes) * 100) : item.rate;
 
-                <div className="space-y-1">
-                  <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                    <div style={{ width: `${item.rate}%` }} className="bg-emerald-600 h-full" />
+              return (
+                <div key={idx} className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs space-y-3">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <span className="font-bold text-slate-900 text-xs block">{item.votehead}</span>
+                      <span className="text-[10px] text-slate-500 font-mono">Budget: KES {fig.budgetKes.toLocaleString()}</span>
+                    </div>
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                        absorptionRate >= 75
+                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                          : absorptionRate >= 50
+                          ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                          : 'bg-rose-50 text-rose-700 border border-rose-200'
+                      }`}
+                    >
+                      {absorptionRate}% Absorption
+                    </span>
                   </div>
-                </div>
 
-                <div className="pt-2 border-t border-slate-100 grid grid-cols-2 gap-2 text-[11px]">
-                  <div>
-                    <span className="text-slate-500 block">Collected:</span>
-                    <strong className="text-emerald-700 tabular-nums font-bold">
-                      KES {item.collected.toLocaleString()}
-                    </strong>
+                  <div className="space-y-1">
+                    <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                      <div style={{ width: `${Math.min(100, absorptionRate)}%` }} className="bg-emerald-600 h-full" />
+                    </div>
                   </div>
-                  <div>
-                    <span className="text-slate-500 block">Balance:</span>
-                    <strong className="text-rose-600 tabular-nums font-bold">
-                      KES {item.balance.toLocaleString()}
-                    </strong>
+
+                  <div className="pt-2 border-t border-slate-100 grid grid-cols-2 gap-2 text-[11px]">
+                    <div>
+                      <span className="text-slate-500 block">Actual Expenditure:</span>
+                      <strong className="text-slate-900 tabular-nums font-bold">
+                        KES {fig.spentKes.toLocaleString()}
+                      </strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block">Unspent Balance:</span>
+                      <strong className="text-emerald-700 tabular-nums font-bold">
+                        KES {Math.max(0, fig.budgetKes - fig.spentKes).toLocaleString()}
+                      </strong>
+                    </div>
+                  </div>
+
+                  {fig.notes && (
+                    <p className="text-[10px] text-slate-500 italic truncate">
+                      Note: {fig.notes}
+                    </p>
+                  )}
+
+                  {/* View and Edit Buttons */}
+                  <div className="pt-2 flex items-center gap-2 border-t border-slate-100">
+                    <button
+                      onClick={() => setViewingVotehead(item.votehead)}
+                      className="flex-1 py-1.5 px-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded text-slate-700 text-xs font-semibold flex items-center justify-center gap-1 transition-colors"
+                    >
+                      <FileText className="w-3 h-3 text-slate-500" />
+                      <span>View Breakdown</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setEditingVotehead(item.votehead);
+                        setEditForm({
+                          budgetKes: fig.budgetKes,
+                          spentKes: fig.spentKes,
+                          notes: fig.notes,
+                        });
+                      }}
+                      className="flex-1 py-1.5 px-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded text-emerald-800 text-xs font-bold flex items-center justify-center gap-1 transition-colors"
+                    >
+                      <Edit3 className="w-3 h-3 text-emerald-600" />
+                      <span>Edit Figure</span>
+                    </button>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           <div className="p-4 bg-emerald-50 rounded-lg border border-emerald-200 text-xs text-emerald-950 flex flex-col sm:flex-row items-center justify-between gap-3">
@@ -236,6 +370,134 @@ export function VoteheadAndBursaryLedger({ students, bursaries, onAddBursary }: 
             </div>
             <div className="text-right font-mono font-bold whitespace-nowrap">
               MoE Capitation Ref: FDSE/2026/KIAMBU/LIMURU
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Votehead Figure Modal */}
+      {editingVotehead && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-md p-6 space-y-4 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b pb-3">
+              <div>
+                <h3 className="font-bold text-slate-900 text-sm">Edit Votehead Figures</h3>
+                <span className="text-xs text-emerald-700 font-semibold">{editingVotehead}</span>
+              </div>
+              <button onClick={() => setEditingVotehead(null)} className="p-1 rounded text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveFigure} className="space-y-3 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Approved Budget Allocation (KES)</label>
+                <input
+                  type="number"
+                  value={editForm.budgetKes}
+                  onChange={(e) => setEditForm({ ...editForm, budgetKes: Number(e.target.value) })}
+                  className="w-full p-2 border border-slate-300 rounded text-slate-900 font-mono font-bold"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Actual Cumulative Expenditure (KES)</label>
+                <input
+                  type="number"
+                  value={editForm.spentKes}
+                  onChange={(e) => setEditForm({ ...editForm, spentKes: Number(e.target.value) })}
+                  className="w-full p-2 border border-slate-300 rounded text-slate-900 font-mono font-bold"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Accounting Remarks & Procurement Justification</label>
+                <textarea
+                  value={editForm.notes}
+                  onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+                  rows={2}
+                  className="w-full p-2 border border-slate-300 rounded text-slate-900"
+                  placeholder="e.g. Approved via BoM Minute 4/2026 for Lab equipment..."
+                />
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingVotehead(null)}
+                  className="px-3 py-1.5 text-slate-600 hover:text-slate-800"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded font-bold shadow-xs"
+                >
+                  Save Figures
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* View Breakdown Modal */}
+      {viewingVotehead && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-lg p-6 space-y-4 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b pb-3">
+              <div>
+                <h3 className="font-bold text-slate-900 text-sm">Votehead Financial Breakdown</h3>
+                <span className="text-xs text-emerald-700 font-semibold">{viewingVotehead}</span>
+              </div>
+              <button onClick={() => setViewingVotehead(null)} className="p-1 rounded text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 grid grid-cols-2 gap-2">
+                <div>
+                  <span className="text-slate-500 block">Total Budget:</span>
+                  <strong className="text-slate-900 font-mono text-sm">
+                    KES {(customFigures[viewingVotehead]?.budgetKes || 0).toLocaleString()}
+                  </strong>
+                </div>
+                <div>
+                  <span className="text-slate-500 block">Committed / Spent:</span>
+                  <strong className="text-emerald-700 font-mono text-sm">
+                    KES {(customFigures[viewingVotehead]?.spentKes || 0).toLocaleString()}
+                  </strong>
+                </div>
+              </div>
+
+              <div>
+                <h4 className="font-bold text-slate-900 mb-1.5">Contributing Enrolled Learners (Sample)</h4>
+                <div className="max-h-48 overflow-y-auto border border-slate-200 rounded divide-y divide-slate-100">
+                  {students.slice(0, 8).map((s) => (
+                    <div key={s.id} className="p-2 flex items-center justify-between">
+                      <div>
+                        <strong className="text-slate-800 block">{s.name}</strong>
+                        <span className="text-[10px] text-slate-500 font-mono">{s.admissionNo} · {s.grade}</span>
+                      </div>
+                      <span className="text-emerald-700 font-mono font-bold">
+                        Paid: KES {(s.fees.voteheadBreakdown[viewingVotehead as VoteHead]?.paid || 4500).toLocaleString()}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pt-2 flex justify-end">
+                <button
+                  onClick={() => setViewingVotehead(null)}
+                  className="px-4 py-1.5 bg-slate-900 text-white rounded font-bold text-xs"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         </div>

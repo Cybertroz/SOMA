@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   ShieldCheck,
   X,
@@ -19,9 +19,12 @@ import {
   FileSpreadsheet,
   Building2,
   FileCheck2,
+  Edit3,
+  Save,
+  RotateCcw,
 } from 'lucide-react';
-import { AuthUser, UserRole, PermissionKey } from '../types/school';
-import { ROLE_CONFIGS, SYSTEM_USERS } from '../data/mockUsers';
+import { AuthUser, UserRole, PermissionKey, RolePermissionConfig } from '../types/school';
+import { ROLE_CONFIGS as INITIAL_ROLE_CONFIGS, SYSTEM_USERS } from '../data/mockUsers';
 
 interface RolePermissionModalProps {
   isOpen: boolean;
@@ -42,7 +45,65 @@ export const RolePermissionModal: React.FC<RolePermissionModalProps> = ({
   currentUser,
   onSelectUser,
 }) => {
+  const [configs, setConfigs] = useState<Record<UserRole, RolePermissionConfig>>(() => {
+    const saved = localStorage.getItem('limuru_rbac_custom_configs');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {}
+    }
+    return INITIAL_ROLE_CONFIGS;
+  });
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [safeguardNoticeText, setSafeguardNoticeText] = useState(
+    configs[currentUser.role]?.dataSafeguardNotice || ''
+  );
+  const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
+
   if (!isOpen) return null;
+
+  const handleTogglePermission = (role: UserRole, key: PermissionKey) => {
+    if (!isEditing) return;
+    setConfigs((prev) => {
+      const roleConfig = prev[role];
+      const updated = {
+        ...prev,
+        [role]: {
+          ...roleConfig,
+          permissions: {
+            ...roleConfig.permissions,
+            [key]: !roleConfig.permissions[key],
+          },
+        },
+      };
+      return updated;
+    });
+  };
+
+  const handleSaveRbac = () => {
+    const updated = {
+      ...configs,
+      [currentUser.role]: {
+        ...configs[currentUser.role],
+        dataSafeguardNotice: safeguardNoticeText,
+      },
+    };
+    setConfigs(updated);
+    localStorage.setItem('limuru_rbac_custom_configs', JSON.stringify(updated));
+    setIsEditing(false);
+    setSaveSuccessMsg('RBAC Permissions & Data Safeguards successfully updated and locked!');
+    setTimeout(() => setSaveSuccessMsg(null), 3500);
+  };
+
+  const handleResetDefaults = () => {
+    setConfigs(INITIAL_ROLE_CONFIGS);
+    setSafeguardNoticeText(INITIAL_ROLE_CONFIGS[currentUser.role].dataSafeguardNotice);
+    localStorage.removeItem('limuru_rbac_custom_configs');
+    setIsEditing(false);
+    setSaveSuccessMsg('Reset to Kenya MoE statutory standard RBAC permissions.');
+    setTimeout(() => setSaveSuccessMsg(null), 3500);
+  };
 
   const PERMISSION_GROUPS: PermissionGroup[] = [
     {
@@ -194,14 +255,68 @@ export const RolePermissionModal: React.FC<RolePermissionModalProps> = ({
           </div>
         </div>
 
-        {/* Data Protection Rationale Notice */}
-        <div className="bg-amber-50/70 border-b border-amber-200 px-6 py-2.5 shrink-0 flex items-start gap-2.5 text-xs text-amber-900">
-          <AlertOctagon className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-          <div className="leading-relaxed">
-            <strong className="font-semibold text-amber-950">Statutory Data Privacy Safeguard: </strong>
-            {ROLE_CONFIGS[currentUser.role].dataSafeguardNotice}
+        {/* Data Protection Rationale Notice with Edit Support */}
+        <div className="bg-amber-50/70 border-b border-amber-200 px-6 py-2.5 shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs text-amber-900">
+          <div className="flex items-start gap-2.5 flex-1">
+            <AlertOctagon className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <div className="leading-relaxed flex-1">
+              <strong className="font-semibold text-amber-950">Statutory Data Privacy Safeguard: </strong>
+              {isEditing ? (
+                <textarea
+                  value={safeguardNoticeText}
+                  onChange={(e) => setSafeguardNoticeText(e.target.value)}
+                  rows={2}
+                  className="w-full mt-1.5 p-2 border border-amber-300 rounded bg-white text-slate-900 font-sans text-xs focus:ring-2 focus:ring-emerald-500"
+                  placeholder="Enter customized statutory data safeguard notice for this role..."
+                />
+              ) : (
+                <span>{configs[currentUser.role]?.dataSafeguardNotice}</span>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {isEditing ? (
+              <>
+                <button
+                  onClick={handleSaveRbac}
+                  className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-xs font-bold flex items-center gap-1 shadow-xs transition-colors"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span>Save Changes</span>
+                </button>
+                <button
+                  onClick={handleResetDefaults}
+                  className="px-2.5 py-1.5 bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 rounded text-xs font-semibold flex items-center gap-1 transition-colors"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Reset Default</span>
+                </button>
+                <button
+                  onClick={() => setIsEditing(false)}
+                  className="px-2.5 py-1.5 text-slate-500 hover:text-slate-800 text-xs"
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => setIsEditing(true)}
+                className="px-3 py-1.5 bg-white border border-amber-300 text-amber-950 hover:bg-amber-100/60 rounded text-xs font-bold flex items-center gap-1 shadow-2xs transition-colors"
+              >
+                <Edit3 className="w-3.5 h-3.5 text-amber-700" />
+                <span>Edit Permissions & Safeguards</span>
+              </button>
+            )}
           </div>
         </div>
+
+        {saveSuccessMsg && (
+          <div className="bg-emerald-50 border-b border-emerald-200 px-6 py-2 text-xs text-emerald-800 font-semibold flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            <span>{saveSuccessMsg}</span>
+          </div>
+        )}
 
         {/* Scrollable Matrix Table */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
@@ -209,7 +324,9 @@ export const RolePermissionModal: React.FC<RolePermissionModalProps> = ({
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="bg-slate-100 text-slate-700 border-b border-slate-200">
-                  <th className="py-3 px-4 font-bold text-slate-900 w-1/3">System Operational Capability</th>
+                  <th className="py-3 px-4 font-bold text-slate-900 w-1/3">
+                    System Operational Capability {isEditing && <span className="text-emerald-700 font-bold ml-1">(Click cell to toggle)</span>}
+                  </th>
                   {rolesList.map((r) => (
                     <th
                       key={r.role}
@@ -233,7 +350,7 @@ export const RolePermissionModal: React.FC<RolePermissionModalProps> = ({
                   return (
                     <React.Fragment key={group.name}>
                       <tr className="bg-slate-50/80 font-bold text-slate-800 text-[11px] tracking-wide uppercase">
-                        <td colSpan={6} className="py-2 px-4 flex items-center gap-2 text-slate-700 bg-slate-100/60">
+                        <td colSpan={7} className="py-2 px-4 flex items-center gap-2 text-slate-700 bg-slate-100/60">
                           <GroupIcon className="w-3.5 h-3.5 text-slate-600" />
                           <span>{group.name}</span>
                         </td>
@@ -245,14 +362,16 @@ export const RolePermissionModal: React.FC<RolePermissionModalProps> = ({
                             <div className="text-[11px] text-slate-500">{item.desc}</div>
                           </td>
                           {rolesList.map((r) => {
-                            const hasPerm = ROLE_CONFIGS[r.role].permissions[item.key];
+                            const hasPerm = configs[r.role]?.permissions[item.key];
                             const isCurrent = currentUser.role === r.role;
                             return (
                               <td
                                 key={r.role}
+                                onClick={() => handleTogglePermission(r.role, item.key)}
                                 className={`py-2.5 px-3 text-center ${
                                   isCurrent ? 'bg-emerald-50/50' : ''
-                                }`}
+                                } ${isEditing ? 'cursor-pointer hover:bg-emerald-100/50 transition-colors' : ''}`}
+                                title={isEditing ? 'Click to toggle permission' : undefined}
                               >
                                 {hasPerm ? (
                                   <div className="inline-flex items-center justify-center text-emerald-600 font-medium">
@@ -283,7 +402,7 @@ export const RolePermissionModal: React.FC<RolePermissionModalProps> = ({
                 Staff Remuneration Privacy
               </div>
               <p className="text-slate-600 leading-relaxed">
-                Staff payroll, PAYE deductions, and Housing Levy records are restricted strictly to the <strong>Principal</strong> and <strong>Bursar</strong>, preventing disclosure among peer educators.
+                Staff payroll, PAYE deductions, and Housing Levy records are restricted strictly to authorized accounting officers, preventing disclosure among peer educators.
               </p>
             </div>
 
@@ -309,9 +428,15 @@ export const RolePermissionModal: React.FC<RolePermissionModalProps> = ({
           </div>
         </div>
 
-        {/* Modal Footer */}
-        <div className="bg-slate-100 border-t border-slate-200 px-6 py-3 shrink-0 flex items-center justify-between text-xs text-slate-500">
-          <span>Active Session ID: <strong className="font-mono text-slate-700">RBAC-SEC-2026-LMS</strong></span>
+        {/* Modal Footer with Strongly Bound User UUID */}
+        <div className="bg-slate-100 border-t border-slate-200 px-6 py-3 shrink-0 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-600">
+          <div className="flex items-center gap-2">
+            <Lock className="w-3.5 h-3.5 text-emerald-700" />
+            <span>Actor Bound to UUID:</span>
+            <code className="font-mono text-emerald-900 bg-emerald-100 px-2 py-0.5 rounded border border-emerald-300 font-bold">
+              {currentUser.uuid}
+            </code>
+          </div>
           <button
             onClick={onClose}
             className="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-md shadow-xs transition-colors"

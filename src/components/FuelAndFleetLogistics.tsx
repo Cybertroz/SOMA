@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Truck,
   MapPin,
@@ -24,6 +24,9 @@ import {
   FileText,
   TrendingDown,
   Navigation,
+  Printer,
+  FileSpreadsheet,
+  Upload,
 } from 'lucide-react';
 import {
   FuelFleetVehicle,
@@ -78,6 +81,90 @@ export const FuelAndFleetLogistics: React.FC<FuelAndFleetLogisticsProps> = ({
   const [maintGarage, setMaintGarage] = useState('Isuzu East Africa Workshop');
   const [maintCost, setMaintCost] = useState<number>(25000);
   const [maintNotes, setMaintNotes] = useState('Oil, oil filter and fuel filter change.');
+  const [feedbackToast, setFeedbackToast] = useState<string | null>(null);
+  const importFuelFileRef = useRef<HTMLInputElement>(null);
+
+  const showToast = (msg: string) => {
+    setFeedbackToast(msg);
+    setTimeout(() => setFeedbackToast(null), 3500);
+  };
+
+  const handleExportFuelExcel = () => {
+    exportToExcel(
+      'Limuru_Model_Fleet_Fuel_Logs',
+      fuelLogs,
+      [
+        { header: 'Date', key: 'date' },
+        { header: 'Vehicle Plate', key: 'vehiclePlate' },
+        { header: 'Driver', key: 'driverName' },
+        { header: 'Start Odometer (KM)', key: 'startOdometerKm' },
+        { header: 'End Odometer (KM)', key: 'endOdometerKm' },
+        { header: 'Distance (KM)', key: 'distanceCoveredKm' },
+        { header: 'Liters Pumped', key: 'litersPumped' },
+        { header: 'Total Cost (KES)', key: 'totalCostKes' },
+        { header: 'Efficiency (KM/L)', key: 'fuelEfficiencyKmPerLiter' },
+        { header: 'Filling Station', key: 'stationName' },
+        { header: 'Receipt / Voucher', key: 'receiptNumber' },
+        { header: 'Leakage Flagged', key: (l) => l.isLeakageFlagged ? 'YES (Suspected Leakage)' : 'NORMAL' },
+      ]
+    );
+    showToast('Exported fleet fuel logs to Excel.');
+  };
+
+  const handleImportFuelCsv = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const text = evt.target?.result as string;
+        const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+        let imported = 0;
+
+        for (let i = 1; i < lines.length; i++) {
+          const cols = lines[i].split(',').map((c) => c.trim().replace(/^"|"$/g, ''));
+          if (cols.length >= 6) {
+            const startKm = Number(cols[3]) || 148000;
+            const endKm = Number(cols[4]) || 148150;
+            const ltrs = Number(cols[5]) || 30;
+            const dist = Math.max(1, endKm - startKm);
+            const eff = parseFloat((dist / (ltrs || 1)).toFixed(2));
+
+            const newLog: FuelLogEntry = {
+              id: 'fl_csv_' + Date.now() + '_' + i,
+              date: cols[0] || new Date().toISOString().substring(0, 10),
+              vehicleId: 'veh_01',
+              vehiclePlate: cols[1] || 'KDF 412X',
+              driverName: cols[2] || 'Peter Karanja',
+              startOdometerKm: startKm,
+              endOdometerKm: endKm,
+              distanceCoveredKm: dist,
+              litersPumped: ltrs,
+              fuelRatePerLiter: 182.5,
+              totalCostKes: Number(cols[6]) || (ltrs * 182.5),
+              fuelEfficiencyKmPerLiter: eff,
+              stationName: cols[7] || 'TotalEnergies Limuru',
+              receiptNumber: cols[8] || `VOUCH-${Date.now().toString().slice(-4)}`,
+              isLeakageFlagged: eff < 3.0,
+            };
+            onAddFuelLog(newLog);
+            imported++;
+          }
+        }
+        showToast(`Successfully imported ${imported} fuel log entries from ${file.name}.`);
+        onLogAudit(
+          'FLEET_FUEL_LOG',
+          'Fleet Fuel Log CSV Import',
+          `Imported ${imported} fuel log records via ${file.name}.`
+        );
+      } catch (err) {
+        showToast('Error importing fuel log CSV.');
+      }
+    };
+    reader.readAsText(file);
+    if (e.target) e.target.value = '';
+  };
 
   // Fuel Refill Submission
   const handleFuelSubmit = (e: React.FormEvent) => {
@@ -152,6 +239,28 @@ export const FuelAndFleetLogistics: React.FC<FuelAndFleetLogisticsProps> = ({
 
   return (
     <div className="space-y-6">
+      {/* Toast Notification */}
+      {feedbackToast && (
+        <div className="p-3 bg-emerald-900 text-white rounded-xl text-xs font-bold shadow-lg flex items-center justify-between animate-in fade-in duration-200">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+            <span>{feedbackToast}</span>
+          </div>
+          <button onClick={() => setFeedbackToast(null)} className="text-emerald-300 hover:text-white">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Hidden File Input for Fuel Log Import */}
+      <input
+        type="file"
+        ref={importFuelFileRef}
+        onChange={handleImportFuelCsv}
+        accept=".csv,.txt"
+        className="hidden"
+      />
+
       {/* Header */}
       <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
@@ -168,17 +277,47 @@ export const FuelAndFleetLogistics: React.FC<FuelAndFleetLogisticsProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Print Button */}
+          <button
+            onClick={() => window.print()}
+            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-xs font-bold shadow-xs transition-colors flex items-center gap-1.5 border border-slate-300"
+            title="Print Fleet & Logistics Register"
+          >
+            <Printer className="w-3.5 h-3.5 text-slate-600" />
+            <span>Print Register</span>
+          </button>
+
+          {/* Export to Excel */}
+          <button
+            onClick={handleExportFuelExcel}
+            className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 rounded-lg text-xs font-bold shadow-xs transition-colors flex items-center gap-1.5 border border-emerald-300"
+            title="Export Fuel Logs to Excel / CSV"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
+            <span>Export Excel</span>
+          </button>
+
+          {/* Import CSV */}
+          <button
+            onClick={() => importFuelFileRef.current?.click()}
+            className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold shadow-xs transition-colors flex items-center gap-1.5"
+            title="Import Fuel Logs via CSV"
+          >
+            <Upload className="w-3.5 h-3.5 text-slate-200" />
+            <span>Import (.csv)</span>
+          </button>
+
           <button
             onClick={() => setIsMaintModalOpen(true)}
-            className="px-3.5 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-semibold shadow-xs transition-colors flex items-center gap-1.5"
+            className="px-3.5 py-1.5 border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-semibold shadow-xs transition-colors flex items-center gap-1.5"
           >
             <Wrench className="w-3.5 h-3.5 text-slate-600" />
             Schedule Service
           </button>
           <button
             onClick={() => setIsFuelModalOpen(true)}
-            className="px-4 py-2 bg-emerald-800 hover:bg-emerald-900 text-white rounded-lg text-xs font-bold shadow-xs transition-colors flex items-center gap-2"
+            className="px-4 py-1.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-lg text-xs font-bold shadow-xs transition-colors flex items-center gap-2"
           >
             <Fuel className="w-4 h-4" />
             Log Fuel Voucher

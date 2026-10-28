@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   School,
   Users,
@@ -39,7 +39,16 @@ import {
   Lock,
   ArrowRightLeft,
   Key,
+  FileCheck,
+  Menu,
+  X,
+  Sun,
+  Moon,
+  Zap,
+  Check,
+  LogOut,
 } from 'lucide-react';
+import { SchoolPlatformDashboard } from './components/SchoolPlatformDashboard';
 
 import {
   Learner,
@@ -123,12 +132,32 @@ import { ClassRenameModal } from './components/ClassRenameModal';
 import { TeacherTpadModule } from './components/TeacherTpadModule';
 import { FeeReminderSmsModal } from './components/FeeReminderSmsModal';
 import { MinistryOfEducationOversightModule } from './components/MinistryOfEducationOversightModule';
+import { SchoolMoeComplianceReturnsModule } from './components/SchoolMoeComplianceReturnsModule';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { PrintPreviewProvider, usePrintPreview } from './context/PrintPreviewContext';
+import { PrintPreviewModal } from './components/PrintPreviewModal';
+import { LoginPage } from './components/LoginPage';
+import { UserManagementModule } from './components/UserManagementModule';
 import {
   KIAMBU_COUNTY_SCHOOLS,
   INITIAL_MOE_DISBURSEMENTS,
   INITIAL_MOE_TRANSFERS,
   INITIAL_MOE_MAJOR_APPROVALS,
+  INITIAL_MOE_STATUTORY_REPORTS,
 } from './data/mockMoeData';
+import {
+  INITIAL_SUFFIX_AUDITS,
+  INITIAL_KNEC_MAPPINGS,
+  INITIAL_TEACHER_WORKLOADS,
+  INITIAL_STEM_LAB_AUDITS,
+  INITIAL_SANITATION_AUDITS,
+  INITIAL_CAPITATION_RECONCILIATIONS,
+  INITIAL_UNIFORM_COST_RETURNS,
+  INITIAL_SNE_RETURNS,
+  INITIAL_SAFETY_RETURNS,
+  INITIAL_TRANSITION_RETURNS,
+  INITIAL_PRIORITY_ACTION_ITEMS,
+} from './data/mockExecutiveAuditData';
 
 // Audio feedback chime helper
 const playSound = (type: 'success' | 'click' | 'error') => {
@@ -164,7 +193,18 @@ const playSound = (type: 'success' | 'click' | 'error') => {
   }
 };
 
-export default function App() {
+function SchoolApp() {
+  const {
+    currentUser: authUser,
+    loading: authLoading,
+    logout,
+    inactivityWarning,
+    resetInactivityTimer,
+    logAuditAction: firebaseLogAudit,
+  } = useAuth();
+  const { openPrintPreview } = usePrintPreview();
+  const [isSignOutConfirmOpen, setIsSignOutConfirmOpen] = useState(false);
+
   type ActiveTab =
     | 'dashboard'
     | 'moe-oversight'
@@ -187,20 +227,132 @@ export default function App() {
     | 'fees'
     | 'report-card'
     | 'tpad'
+    | 'school-moe-returns'
+    | 'user-management'
     | 'audit-logs';
 
-  // Authenticated Persona state with localStorage persistence
+  const SCHOOL_SIDEBAR_GROUPS = [
+    {
+      name: 'Daily',
+      items: [
+        { id: 'dashboard' as const, label: 'Overview', icon: School },
+        { id: 'timetable' as const, label: 'Timetabling', icon: Calendar },
+        { id: 'sms' as const, label: 'Bulk SMS Gateway', icon: Radio },
+      ],
+    },
+    {
+      name: 'Learning',
+      items: [
+        { id: 'cbc' as const, label: 'CBC Tracking', icon: Award },
+        { id: 'admissions' as const, label: 'Grade 1-9 Registry', icon: Users },
+        { id: 'analytics' as const, label: 'KNEC Analytics', icon: Award },
+        { id: 'portfolios' as const, label: 'Health & Portfolios', icon: HeartPulse },
+        { id: 'report-card' as const, label: 'Report Cards', icon: Printer },
+      ],
+    },
+    {
+      name: 'Money',
+      items: [
+        { id: 'fees' as const, label: 'Fee Ledger', icon: CreditCard },
+        { id: 'daraja' as const, label: 'M-Pesa Daraja Sync', icon: Smartphone },
+        { id: 'voteheads' as const, label: 'Voteheads & Bursaries', icon: Layers },
+        { id: 'payroll' as const, label: 'Payroll & KRA/SHA', icon: DollarSign },
+      ],
+    },
+    {
+      name: 'Operations',
+      items: [
+        { id: 'user-management' as const, label: 'User Management', icon: Users },
+        { id: 'teachers' as const, label: 'Teachers & Faculty', icon: UserCheck },
+        { id: 'fleet' as const, label: 'Fleet & Fuel Logistics', icon: Truck },
+        { id: 'assets' as const, label: 'Assets & Facilities', icon: Package },
+        { id: 'kitchen-inventory' as const, label: 'Kitchen Stores', icon: Warehouse },
+        { id: 'textbooks-stationery' as const, label: 'Books & Stationery', icon: BookOpen },
+        { id: 'audit-logs' as const, label: 'Security & Audit Ledger', icon: Lock },
+      ],
+    },
+  ];
+
+  // Strongly lock authenticated user to their immutable RFC4122 v4 UUID
   const [currentUser, setCurrentUser] = useState<AuthUser>(() => {
-    const saved = localStorage.getItem('limuru_model_current_user');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        // fallback
+    const savedUuid = localStorage.getItem('limuru_auth_user_uuid');
+    if (savedUuid) {
+      const match = SYSTEM_USERS.find((u) => u.uuid === savedUuid);
+      if (match) return match;
+    }
+    const defaultUser = SYSTEM_USERS[0]; // Dr. Anthony K. Macharia (Chief Principal)
+    return defaultUser;
+  });
+
+  // Keep currentUser in sync with real authenticated user profile
+  useEffect(() => {
+    if (authUser) {
+      const mappedRole: UserRole =
+        authUser.role === 'headteacher'
+          ? 'principal'
+          : authUser.role === 'deputy'
+          ? 'principal'
+          : authUser.role === 'bursar'
+          ? 'bursar'
+          : authUser.role === 'teacher'
+          ? 'teacher'
+          : authUser.role === 'moe_official'
+          ? 'moe_director'
+          : 'parent';
+
+      const updatedUser: AuthUser = {
+        id: authUser.uid,
+        uuid: authUser.uid,
+        name: authUser.fullName,
+        role: mappedRole,
+        title:
+          authUser.role === 'headteacher'
+            ? 'Chief Principal & Accounting Officer'
+            : authUser.role === 'deputy'
+            ? 'Deputy Principal'
+            : authUser.role === 'bursar'
+            ? 'Head of Accounts & School Bursar'
+            : authUser.role === 'teacher'
+            ? 'Subject Teacher & Educator'
+            : authUser.role === 'moe_official'
+            ? 'County Director of Education / QASO Inspector'
+            : 'Parent / Guardian',
+        department:
+          authUser.department ||
+          (authUser.role === 'headteacher'
+            ? 'Administration & Institutional Governance'
+            : authUser.role === 'bursar'
+            ? 'Finance & MoE Votehead Accounting'
+            : authUser.role === 'moe_official'
+            ? 'Ministry of Education · Kiambu Directorate'
+            : 'Academics & Faculty'),
+        email: authUser.email,
+        phone: authUser.phone || '+254 722 401 928',
+        avatarInitials:
+          authUser.fullName
+            .split(' ')
+            .filter(Boolean)
+            .map((w) => w[0])
+            .join('')
+            .slice(0, 2)
+            .toUpperCase() || 'LM',
+        assignedGrade: authUser.assignedGrade as GradeLevel | undefined,
+        assignedStream: authUser.assignedStream,
+      };
+
+      setCurrentUser(updatedUser);
+      localStorage.setItem('limuru_auth_user_uuid', authUser.uid);
+      localStorage.setItem('limuru_model_current_user', JSON.stringify(updatedUser));
+
+      if (mappedRole === 'moe_director') {
+        setActiveTab('moe-oversight');
+      } else if (mappedRole === 'parent') {
+        setActiveTab('parent-portal');
+      } else if (!isTabAccessible(mappedRole, activeTab)) {
+        setActiveTab('dashboard');
       }
     }
-    return SYSTEM_USERS[0]; // Dr. Anthony K. Macharia (Chief Principal)
-  });
+  }, [authUser]);
 
   const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
     if (currentUser.role === 'moe_director') return 'moe-oversight';
@@ -210,10 +362,107 @@ export default function App() {
   const [isPermissionModalOpen, setIsPermissionModalOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isPiiDecrypted, setIsPiiDecrypted] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    return localStorage.getItem('limuru_school_theme') === 'dark';
+  });
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [toastNotification, setToastNotification] = useState<string | null>(null);
+
+  const marksheetFileInputRef = useRef<HTMLInputElement>(null);
+  const feeExcelFileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    localStorage.setItem('limuru_school_theme', isDarkMode ? 'dark' : 'light');
+  }, [isDarkMode]);
+
+  const showToast = (msg: string) => {
+    setToastNotification(msg);
+    setTimeout(() => setToastNotification(null), 3500);
+  };
+
+  const handleSimulateDarajaPush = () => {
+    const owing = learners.filter((s) => s.fees.balance > 0);
+    const candidate = owing.length > 0
+      ? owing[Math.floor(Math.random() * owing.length)]
+      : learners[Math.floor(Math.random() * learners.length)];
+
+    const amounts = [2000, 3500, 5000, 6500, 8000];
+    const amount = amounts[Math.floor(Math.random() * amounts.length)];
+    const voteheads = [
+      'Tuition & CBC Learning Materials',
+      'School Feeding Program',
+      'PTA & Infrastructure Levy',
+      'Co-Curricular & Sports',
+    ] as const;
+    const votehead = voteheads[Math.floor(Math.random() * voteheads.length)];
+
+    const simulatedPayment: DarajaMpesaPayment = {
+      transId: `MP${Math.floor(100000 + Math.random() * 900000)}`,
+      billRefNumber: candidate.admissionNo,
+      transAmount: amount,
+      msisdn: candidate.guardianPhone || '254712345678',
+      firstName: candidate.guardianName.split(' ')[0] || 'Guardian',
+      middleName: '',
+      lastName: candidate.guardianName.split(' ')[1] || '',
+      transTime: new Date().toISOString(),
+      matchedLearnerId: candidate.id,
+      matchedLearnerName: candidate.name,
+      allocatedVotehead: votehead as any,
+      receiptNumber: `REC-${Date.now().toString().slice(-5)}`,
+      status: 'Confirmed',
+    };
+
+    handleProcessDarajaPayment(simulatedPayment);
+    showToast(`Simulated live M-Pesa push: KES ${amount.toLocaleString()} received from ${simulatedPayment.firstName} for ${candidate.name} (${candidate.admissionNo}).`);
+  };
+
+  const handleUpdateLearnerUpi = (learnerId: string, newUpi: string) => {
+    setLearners((prev) =>
+      prev.map((s) => (s.id === learnerId ? { ...s, nemisUpi: newUpi } : s))
+    );
+    showToast(`Updated NEMIS UPI to ${newUpi}. Mapped in local register.`);
+    if (soundEnabled) playSound('success');
+  };
+
+  const handleSendSmsReminder = (learner: Learner, customMessage?: string) => {
+    const msg = customMessage || `Jambo ${learner.guardianName}, fee balance for ${learner.name} is KES ${learner.fees.balance.toLocaleString()}. Pay via Paybill 522123, Acc: ${learner.admissionNo}. Limuru Model School.`;
+    const newSms: SMSBroadcast = {
+      id: `sms_${Date.now()}`,
+      type: 'Fee Reminder',
+      message: msg,
+      recipientsCount: 1,
+      targetGrade: learner.grade,
+      timestamp: new Date().toLocaleDateString('en-GB') + ' ' + new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+      deliveryRate: 100,
+      status: 'Delivered',
+    };
+    setSmsBroadcasts((prev) => [newSms, ...prev]);
+    showToast(`Fee reminder SMS dispatched to ${learner.guardianPhone}.`);
+    if (soundEnabled) playSound('click');
+  };
+
+  const handleMarksheetFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      showToast(`Marksheet "${file.name}" selected. Opening CBC Marksheet engine...`);
+      setIsBulkMarksheetOpen(true);
+      if (soundEnabled) playSound('success');
+    }
+  };
+
+  const handleFeeExcelFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      showToast(`Fee batch sheet "${file.name}" selected. Opening Excel Fee Batch engine...`);
+      setIsExcelFeeModalOpen(true);
+      if (soundEnabled) playSound('success');
+    }
+  };
 
   const handleSelectUser = (user: AuthUser) => {
     setCurrentUser(user);
     localStorage.setItem('limuru_model_current_user', JSON.stringify(user));
+    localStorage.setItem('limuru_auth_user_uuid', user.uuid);
     if (user.role === 'moe_director') {
       setActiveTab('moe-oversight');
     } else if (user.role === 'parent') {
@@ -363,6 +612,7 @@ export default function App() {
       sensitivityLevel: sensitivity,
     };
     setAuditLogs((prev) => [newLog, ...prev]);
+    firebaseLogAudit(action, `[${resource}] ${details}`).catch(() => {});
   };
 
   // Toggle PII Decrypt with mandatory audit log
@@ -824,136 +1074,251 @@ export default function App() {
     return true;
   });
 
+  // SIGN-IN GATE: Must appear BEFORE any dashboard content is rendered
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-emerald-950 to-slate-900 flex flex-col items-center justify-center text-white p-6">
+        <div className="w-16 h-16 rounded-2xl bg-emerald-600/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 mb-5 shadow-2xl animate-pulse">
+          <School className="w-8 h-8 text-emerald-400" />
+        </div>
+        <div className="flex items-center gap-3 text-emerald-200 font-semibold text-sm">
+          <div className="w-4 h-4 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin"></div>
+          <span>Verifying Firebase Authentication & Firestore Credentials...</span>
+        </div>
+        <p className="text-xs text-slate-400 mt-2 font-mono">
+          Limuru Model Comprehensive School · Center No: 20401823
+        </p>
+      </div>
+    );
+  }
+
+  if (!authUser) {
+    return <LoginPage />;
+  }
+
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col font-sans selection:bg-emerald-600 selection:text-white">
+    <div className={`min-h-screen ${isDarkMode ? 'dark bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-800'} flex flex-col font-sans selection:bg-emerald-600 selection:text-white transition-colors duration-150`}>
+      {/* 14-Minute Inactivity Warning Banner */}
+      {inactivityWarning && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9990] max-w-lg w-full px-4 animate-in fade-in slide-in-from-top-4">
+          <div className="bg-amber-500 text-slate-950 p-4 rounded-xl shadow-2xl border-2 border-amber-300 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="w-6 h-6 text-slate-950 shrink-0 animate-bounce" />
+              <div>
+                <p className="text-xs font-black uppercase tracking-wider">Session Inactivity Warning</p>
+                <p className="text-xs font-medium">You will be logged out in 60 seconds due to inactivity.</p>
+              </div>
+            </div>
+            <button
+              onClick={resetInactivityTimer}
+              className="px-3 py-1.5 bg-slate-950 hover:bg-slate-900 text-white rounded-lg text-xs font-bold shrink-0 transition-colors shadow-sm"
+            >
+              Keep Session Active
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Hidden File Inputs for Header Actions */}
+      <input
+        type="file"
+        ref={marksheetFileInputRef}
+        className="hidden"
+        accept=".xlsx,.xls,.csv"
+        onChange={handleMarksheetFileSelected}
+      />
+      <input
+        type="file"
+        ref={feeExcelFileInputRef}
+        className="hidden"
+        accept=".xlsx,.xls,.csv"
+        onChange={handleFeeExcelFileSelected}
+      />
+
+      {/* Floating Toast Notification */}
+      {toastNotification && (
+        <div className="fixed bottom-6 right-6 z-50 max-w-md bg-slate-900/95 text-white text-xs px-4 py-3 rounded-xl shadow-2xl border border-emerald-500/50 flex items-center gap-3 backdrop-blur-md animate-in fade-in slide-in-from-bottom-2">
+          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+          <span className="font-medium leading-snug">{toastNotification}</span>
+          <button
+            onClick={() => setToastNotification(null)}
+            className="ml-auto text-slate-400 hover:text-white p-1 rounded transition-colors"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* =========================================================================
           TOP INSTITUTIONAL HEADER & BRANDING
           ========================================================================= */}
       <header className="no-print sticky top-0 z-40 bg-gradient-to-r from-emerald-950 via-emerald-900 to-teal-950 border-b border-emerald-800 shadow-md text-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between gap-4 h-16">
-            {/* Wordmark Brand */}
-            {currentUser.role === 'moe_director' ? (
-              <div className="flex items-center gap-3 shrink-0">
-                <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-400/50 text-amber-300 flex items-center justify-center font-bold shadow-xs">
-                  <span className="text-xl">🇰🇪</span>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+            
+            {/* Left Insignia Badge & Mobile Hamburger Menu */}
+            <div className="flex items-center gap-2.5 shrink-0 self-start md:self-center">
+              {/* Mobile Menu Hamburger (for non-MoE roles on smaller screens) */}
+              {currentUser.role !== 'moe_director' && activeTab !== 'moe-oversight' && (
+                <button
+                  onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                  title="Toggle Navigation Menu"
+                  className="lg:hidden p-2 text-white bg-emerald-800/80 hover:bg-emerald-700 rounded-lg transition-colors border border-emerald-600/60 flex items-center justify-center"
+                >
+                  {isMobileMenuOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
+                </button>
+              )}
+
+              {currentUser.role === 'moe_director' ? (
+                <div className="flex items-center gap-2">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-400/50 text-amber-300 flex items-center justify-center font-bold shadow-xs">
+                    <span className="text-xl">🇰🇪</span>
+                  </div>
+                  <span className="hidden sm:inline-block px-2.5 py-0.5 text-[10px] font-bold rounded-full bg-amber-400 text-slate-950 font-mono uppercase tracking-wide">
+                    GOV.KE
+                  </span>
                 </div>
-                <div className="flex flex-col">
-                  <div className="flex items-center gap-2">
-                    <span className="text-base font-black tracking-tight text-white uppercase whitespace-nowrap">
-                      Ministry of Education
-                    </span>
-                    <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-400 text-slate-950 font-mono">
+              ) : (
+                <div className="flex items-center gap-2">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 flex items-center justify-center font-bold shadow-xs">
+                    <School className="w-6 h-6 text-emerald-300" />
+                  </div>
+                  <span className="hidden sm:inline-block px-2.5 py-0.5 text-[10px] font-bold rounded-full bg-emerald-400 text-slate-950 font-mono uppercase tracking-wide">
+                    CBC HUB
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* CENTERED MAJESTIC PROMINENT HEADING FOR MOE AND SCHOOL */}
+            <div className="flex-1 flex flex-col items-center justify-center text-center px-2">
+              {currentUser.role === 'moe_director' ? (
+                <>
+                  <div className="flex items-center justify-center gap-2.5 flex-wrap">
+                    <span className="text-xl sm:text-2xl drop-shadow-sm">🇰🇪</span>
+                    <h1 className="text-lg sm:text-2xl md:text-3xl font-black tracking-wider text-white uppercase drop-shadow-sm">
+                      REPUBLIC OF KENYA · MINISTRY OF EDUCATION
+                    </h1>
+                    <span className="text-xl sm:text-2xl drop-shadow-sm">🇰🇪</span>
+                    <span className="px-2.5 py-0.5 text-[10px] font-bold rounded-full bg-amber-400 text-slate-950 font-mono tracking-normal uppercase shadow-xs">
                       State Oversight
                     </span>
                   </div>
-                  <span className="text-xs text-amber-200/90 whitespace-nowrap">
-                    Republic of Kenya · State Department for Basic Education · Kiambu County Directorate
-                  </span>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center gap-3 shrink-0">
-                <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 flex items-center justify-center font-bold shadow-xs">
-                  <School className="w-6 h-6 text-emerald-300" />
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-base font-bold tracking-tight text-white whitespace-nowrap">
-                    Limuru Model Comprehensive School
-                  </span>
-                  <span className="text-xs text-emerald-200/90 whitespace-nowrap">
-                    MoE Center: 20401823 · Kiambu County · Grade 1 to 9 CBC & NEMIS Integrated
-                  </span>
-                </div>
-              </div>
-            )}
+                  <p className="text-xs sm:text-sm font-medium text-amber-200/90 tracking-wide mt-1">
+                    State Department for Basic Education · Kiambu County & National Oversight Directorate
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center justify-center gap-2.5 flex-wrap">
+                    <School className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-400 shrink-0" />
+                    <h1 className="text-lg sm:text-2xl md:text-3xl font-black tracking-tight text-white uppercase drop-shadow-sm">
+                      LIMURU MODEL COMPREHENSIVE SCHOOL
+                    </h1>
+                    <span className="px-2.5 py-0.5 text-[10px] font-bold rounded-full bg-emerald-400 text-slate-950 font-mono tracking-normal uppercase shadow-xs">
+                      Center 20401823
+                    </span>
+                  </div>
+                  <p className="text-xs sm:text-sm font-medium text-emerald-200/90 tracking-wide mt-1">
+                    Ministry of Education · Kiambu County · Grade 1 to 9 CBC & Senior Secondary Hub
+                  </p>
+                </>
+              )}
+            </div>
 
-            {/* Quick Action Buttons & Role Switcher */}
-            <div className="flex items-center gap-2 shrink-0">
+            {/* Quick Action Buttons & Controls */}
+            <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+              {/* Sound Chime Toggle */}
               <button
                 onClick={() => setSoundEnabled(!soundEnabled)}
                 title={soundEnabled ? 'Audio Chime Enabled' : 'Audio Muted'}
-                className="p-2 text-emerald-200 hover:text-white hover:bg-emerald-800/60 rounded-md transition-colors"
+                className="p-2 text-emerald-200 hover:text-white hover:bg-emerald-800/60 rounded-lg transition-colors border border-emerald-700/50"
               >
                 {soundEnabled ? <Volume2 className="w-4 h-4 text-emerald-300" /> : <VolumeX className="w-4 h-4 text-slate-400" />}
               </button>
 
-              {/* Show MoE quick button for Principal or other roles that have access */}
-              {currentUser.role !== 'moe_director' && isTabAccessible(currentUser.role, 'moe-oversight') && (
-                <button
-                  onClick={() => {
-                    setActiveTab('moe-oversight');
-                    if (soundEnabled) playSound('click');
-                  }}
-                  className={`px-3 py-1.5 text-xs font-bold rounded-md shadow-xs transition-colors flex items-center gap-1.5 border ${
-                    activeTab === 'moe-oversight'
-                      ? 'bg-amber-400 text-slate-950 border-amber-300 ring-2 ring-amber-300/40'
-                      : 'bg-amber-950/80 text-amber-200 border-amber-500/50 hover:bg-amber-900'
-                  }`}
-                  title="Ministry of Education Kiambu County Oversight & Statutory Approvals"
-                >
-                  <Building2 className="w-3.5 h-3.5 text-amber-400" />
-                  <span>MoE County Portal</span>
-                </button>
-              )}
+              {/* Light / Dark Mode Toggle */}
+              <button
+                onClick={() => setIsDarkMode(!isDarkMode)}
+                title={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+                className="p-2 text-emerald-200 hover:text-white hover:bg-emerald-800/60 rounded-lg transition-colors border border-emerald-700/50"
+              >
+                {isDarkMode ? <Sun className="w-4 h-4 text-amber-300" /> : <Moon className="w-4 h-4 text-emerald-200" />}
+              </button>
 
-              {/* School Specific Actions - ONLY for non-MoE roles */}
+
+
+              {/* 5 School Specific Action Buttons (For non-MoE roles) */}
               {currentUser.role !== 'moe_director' && (
                 <>
-                  {/* Rename Classes & Streams Option */}
-                  <button
-                    onClick={() => {
-                      setIsClassRenameModalOpen(true);
-                      if (soundEnabled) playSound('click');
-                    }}
-                    className="px-3 py-1.5 text-xs font-semibold text-amber-200 bg-amber-950/60 hover:bg-amber-900/80 border border-amber-500/40 rounded-md shadow-xs transition-colors flex items-center gap-1.5"
-                    title="Configure and rename school classes and streams"
-                  >
-                    <Layers className="w-3.5 h-3.5 text-amber-300" />
-                    Rename Classes
-                  </button>
-
-                  {/* Admit Learner - only for roles with manage_admissions (Principal) */}
+                  {/* Action 1: Admit Learner */}
                   {hasPermission(currentUser.role, 'manage_admissions') && (
                     <button
                       onClick={() => {
                         setIsAdmissionModalOpen(true);
                         if (soundEnabled) playSound('click');
                       }}
-                      className="px-3 py-1.5 text-xs font-semibold text-white bg-emerald-700 hover:bg-emerald-600 border border-emerald-500/50 rounded-md shadow-xs transition-colors flex items-center gap-1.5"
+                      className="px-3 py-1.5 text-xs font-semibold text-white bg-emerald-700 hover:bg-emerald-600 border border-emerald-500/50 rounded-lg shadow-xs transition-colors flex items-center gap-1.5"
+                      title="Admit new learner (Grades 1-9)"
                     >
                       <UserPlus className="w-3.5 h-3.5" />
-                      Admit Learner
+                      <span>Admit Learner</span>
                     </button>
                   )}
 
-                  {/* Upload Marksheet - for Principal, Teacher, Class Master */}
+                  {/* Action 2: Rename Classes */}
+                  <button
+                    onClick={() => {
+                      setIsClassRenameModalOpen(true);
+                      if (soundEnabled) playSound('click');
+                    }}
+                    className="px-3 py-1.5 text-xs font-semibold text-amber-200 bg-amber-950/70 hover:bg-amber-900 border border-amber-500/40 rounded-lg shadow-xs transition-colors flex items-center gap-1.5"
+                    title="Configure and rename school classes and streams"
+                  >
+                    <Layers className="w-3.5 h-3.5 text-amber-300" />
+                    <span>Rename Classes</span>
+                  </button>
+
+                  {/* Action 3: Upload Marksheet */}
                   {hasPermission(currentUser.role, 'manage_cbc_marks') && (
                     <button
                       onClick={() => {
-                        setIsBulkMarksheetOpen(true);
-                        if (soundEnabled) playSound('click');
+                        marksheetFileInputRef.current?.click();
                       }}
-                      className="hidden sm:flex px-3 py-1.5 text-xs font-semibold text-sky-100 bg-sky-900/70 hover:bg-sky-800 border border-sky-600/50 rounded-md shadow-xs transition-colors items-center gap-1.5"
+                      className="hidden sm:flex px-3 py-1.5 text-xs font-semibold text-sky-100 bg-sky-900/80 hover:bg-sky-800 border border-sky-600/50 rounded-lg shadow-xs transition-colors items-center gap-1.5"
+                      title="Upload CBC Marksheet file"
                     >
-                      <Award className="w-3.5 h-3.5" />
-                      Upload Marksheet
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>Upload Marksheet</span>
                     </button>
                   )}
 
-                  {/* Add Fees via Excel - only for Bursar and Principal */}
+                  {/* Action 4: Add Fees via Excel */}
                   {hasPermission(currentUser.role, 'manage_fees') && (
                     <button
                       onClick={() => {
-                        setIsExcelFeeModalOpen(true);
-                        if (soundEnabled) playSound('click');
+                        feeExcelFileInputRef.current?.click();
                       }}
-                      className="px-3.5 py-1.5 text-xs font-semibold text-white bg-teal-600 hover:bg-teal-500 border border-teal-400/50 rounded-md shadow-xs transition-colors flex items-center gap-1.5 whitespace-nowrap"
+                      className="px-3 py-1.5 text-xs font-semibold text-teal-100 bg-teal-800/80 hover:bg-teal-700 border border-teal-500/50 rounded-lg shadow-xs transition-colors flex items-center gap-1.5 whitespace-nowrap"
+                      title="Upload batch fee collections via Excel/CSV"
                     >
                       <FileSpreadsheet className="w-3.5 h-3.5" />
-                      Add Fees via Excel
+                      <span>Add Fees via Excel</span>
                     </button>
                   )}
+
+                  {/* Action 5: Daraja API Gateway (Settings) */}
+                  <button
+                    onClick={() => {
+                      setActiveTab('daraja');
+                      if (soundEnabled) playSound('click');
+                    }}
+                    className="px-3 py-1.5 text-xs font-semibold text-emerald-200 bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/40 rounded-lg shadow-xs transition-colors flex items-center gap-1.5"
+                    title="Configure Safaricom Daraja API credentials in Settings"
+                  >
+                    <Smartphone className="w-3.5 h-3.5 text-emerald-300" />
+                    <span>Daraja API Gateway</span>
+                  </button>
                 </>
               )}
 
@@ -964,73 +1329,32 @@ export default function App() {
                 onOpenPermissionMatrix={() => setIsPermissionModalOpen(true)}
                 onOpenAuthModal={() => setIsAuthModalOpen(true)}
               />
+
+              {/* Authenticated User Status & Prominent Sign Out */}
+              <div className="flex items-center gap-2.5 pl-2 border-l border-emerald-800">
+                <div className="hidden sm:block text-right">
+                  <div className="text-xs font-bold text-white leading-tight">
+                    {authUser.fullName}
+                  </div>
+                  <div className="text-[10px] text-emerald-300 font-mono capitalize">
+                    {authUser.role === 'headteacher' ? 'Head Teacher' : authUser.role === 'moe_official' ? 'Ministry Official' : authUser.role}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsSignOutConfirmOpen(true)}
+                  className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition-all active:scale-95"
+                  title="Sign Out / Logout of Limuru CBC System"
+                >
+                  <LogOut className="w-3.5 h-3.5 text-white" />
+                  <span>Logout</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
-
-        {/* Global Primary Navigation Bar (Role-Filtered) */}
-        <div className="border-t border-emerald-800/60 bg-emerald-950/80 backdrop-blur-sm px-4 sm:px-6 lg:px-8 overflow-x-auto flex items-center justify-between gap-1 py-1.5">
-          <div className="flex items-center gap-1">
-            {[
-              { id: 'dashboard', label: 'Overview', icon: School },
-              { id: 'moe-oversight', label: '🇰🇪 MoE County Oversight', icon: Building2 },
-              { id: 'parent-portal', label: 'Parent Portal', icon: Sparkles },
-              { id: 'teachers', label: 'Teachers & Faculty', icon: UserCheck },
-              { id: 'kemis', label: 'KEMIS / NEMIS Sync', icon: Building2 },
-              { id: 'fleet', label: 'Fleet & Fuel Logistics', icon: Truck },
-              { id: 'admissions', label: 'Admissions (G1-9)', icon: Users },
-              { id: 'cbc', label: 'CBC Tracking', icon: Award },
-              { id: 'daraja', label: 'M-Pesa Daraja Sync', icon: Smartphone },
-              { id: 'voteheads', label: 'Voteheads & Bursaries', icon: Layers },
-              { id: 'sms', label: 'Bulk SMS Gateway', icon: Radio },
-              { id: 'payroll', label: 'Payroll & KRA/SHA', icon: DollarSign },
-              { id: 'timetable', label: 'Timetabling', icon: Calendar },
-              { id: 'analytics', label: 'KNEC Analytics', icon: Award },
-              { id: 'portfolios', label: 'Health & Portfolios', icon: HeartPulse },
-              { id: 'assets', label: 'Assets & Facilities', icon: Package },
-              { id: 'kitchen-inventory', label: 'Kitchen Stores', icon: Warehouse },
-              { id: 'textbooks-stationery', label: 'Books & Stationery', icon: BookOpen },
-              { id: 'fees', label: 'Fee Ledger', icon: CreditCard },
-              { id: 'report-card', label: 'Report Cards', icon: Printer },
-              { id: 'tpad', label: 'Teacher TPAD', icon: ShieldCheck },
-              { id: 'audit-logs', label: 'Security & Audit Logs', icon: Lock },
-            ]
-              .filter((item) => isTabAccessible(currentUser.role, item.id))
-              .map((item) => {
-                const Icon = item.icon;
-                const isActive = activeTab === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => {
-                      setActiveTab(item.id as ActiveTab);
-                      if (soundEnabled) playSound('click');
-                    }}
-                    className={`px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap transition-colors flex items-center gap-1.5 ${
-                      isActive
-                        ? 'bg-emerald-500 text-slate-950 font-bold shadow-xs'
-                        : 'text-emerald-100/80 hover:text-white hover:bg-emerald-800/60'
-                    }`}
-                  >
-                    <Icon className="w-3.5 h-3.5" />
-                    {item.label}
-                  </button>
-                );
-              })}
-          </div>
-
-          {/* Quick RBAC Audit trigger in nav */}
-          <button
-            onClick={() => setIsPermissionModalOpen(true)}
-            className="hidden lg:flex items-center gap-1.5 text-xs text-slate-500 hover:text-emerald-800 px-2.5 py-1 rounded hover:bg-white border border-transparent hover:border-slate-200 shrink-0 font-medium transition-colors"
-          >
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-700" />
-            <span>RBAC Matrix</span>
-          </button>
-        </div>
       </header>
 
-      {/* Term Kicker Info Strip */}
+      {/* Term Kicker Info Strip with Strongly Locked User UUID Badge */}
       <div className="no-print bg-slate-900 text-slate-300 py-1.5 px-4 text-xs border-b border-slate-800">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
           {currentUser.role === 'moe_director' ? (
@@ -1042,10 +1366,14 @@ export default function App() {
                 <span aria-hidden="true" className="text-slate-600">·</span>
                 <span>Basic Education Act No. 14 of 2013 Statutory Compliance</span>
               </div>
-              <div className="flex items-center gap-4 text-slate-400 text-[11px]">
-                <span>County Approved Schools: <strong className="text-white tabular-nums">{moeSchools.length} Institutions</strong></span>
+              <div className="flex items-center gap-3 text-slate-400 text-[11px] flex-wrap">
+                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-800 border border-amber-500/40 text-[10px] text-amber-300 font-mono">
+                  <Lock className="w-3 h-3 text-amber-400" />
+                  <span>UUID: <strong className="text-white">{currentUser.uuid}</strong></span>
+                  <span className="px-1 py-0.2 rounded bg-amber-950 text-amber-400 text-[9px] font-bold uppercase tracking-wider">Locked</span>
+                </div>
                 <span aria-hidden="true" className="text-slate-600">·</span>
-                <span>NEMIS Headcount: <strong className="text-emerald-400 tabular-nums">100% Validated</strong></span>
+                <span>Approved Schools: <strong className="text-white tabular-nums">{moeSchools.length}</strong></span>
                 <span aria-hidden="true" className="text-slate-600">·</span>
                 <span>Security: <strong className="text-amber-400 font-mono">TLS 1.3 PKI Seal</strong></span>
               </div>
@@ -1059,12 +1387,16 @@ export default function App() {
                 <span aria-hidden="true" className="text-slate-600">·</span>
                 <span>Kiambu County / Limuru Sub-County</span>
               </div>
-              <div className="flex items-center gap-4 text-slate-400 text-[11px]">
+              <div className="flex items-center gap-3 text-slate-400 text-[11px] flex-wrap">
+                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-800 border border-emerald-500/40 text-[10px] text-emerald-300 font-mono">
+                  <Lock className="w-3 h-3 text-emerald-400" />
+                  <span>UUID: <strong className="text-white">{currentUser.uuid}</strong></span>
+                  <span className="px-1 py-0.2 rounded bg-emerald-950 text-emerald-400 text-[9px] font-bold uppercase tracking-wider">Locked</span>
+                </div>
+                <span aria-hidden="true" className="text-slate-600">·</span>
                 <span>Enrolled: <strong className="text-white tabular-nums">{learners.length} Learners</strong></span>
                 <span aria-hidden="true" className="text-slate-600">·</span>
-                <span>Fee Efficiency: <strong className="text-emerald-400 tabular-nums">{summaryMetrics.feeCollectionRate}%</strong></span>
-                <span aria-hidden="true" className="text-slate-600">·</span>
-                <span>Bursaries: <strong className="text-emerald-400 tabular-nums">KES {summaryMetrics.totalBursaries.toLocaleString()}</strong></span>
+                <span>Efficiency: <strong className="text-emerald-400 tabular-nums">{summaryMetrics.feeCollectionRate}%</strong></span>
               </div>
             </>
           )}
@@ -1075,6 +1407,76 @@ export default function App() {
           MAIN APPLICATION VIEWPORT
           ========================================================================= */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {/* Mobile Drawer (Collapses behind Menu button on phones) */}
+        {isMobileMenuOpen && currentUser.role !== 'moe_director' && activeTab !== 'moe-oversight' && (
+          <div className="lg:hidden fixed inset-0 z-50 flex">
+            <div
+              className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity"
+              onClick={() => setIsMobileMenuOpen(false)}
+            />
+            <div
+              className={`relative w-72 max-w-[85vw] h-full ${
+                isDarkMode ? 'bg-slate-900 text-slate-100 border-slate-800' : 'bg-white text-slate-800 border-slate-200'
+              } border-r shadow-2xl p-5 flex flex-col overflow-y-auto z-10 space-y-6`}
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+                <div className="flex items-center gap-2">
+                  <School className="w-5 h-5 text-emerald-500" />
+                  <span className="font-bold text-sm">School Platform</span>
+                </div>
+                <button
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-5">
+                {SCHOOL_SIDEBAR_GROUPS.map((group) => {
+                  const accessibleItems = group.items.filter((item) => isTabAccessible(currentUser.role, item.id));
+                  if (accessibleItems.length === 0) return null;
+                  return (
+                    <div key={group.name} className="space-y-1.5">
+                      <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-2.5">
+                        {group.name}
+                      </h4>
+                      <div className="space-y-1">
+                        {accessibleItems.map((item) => {
+                          const Icon = item.icon;
+                          const isActive = activeTab === item.id;
+                          return (
+                            <button
+                              key={item.id}
+                              onClick={() => {
+                                setActiveTab(item.id as ActiveTab);
+                                setIsMobileMenuOpen(false);
+                                if (soundEnabled) playSound('click');
+                              }}
+                              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+                                isActive
+                                  ? 'bg-emerald-600 text-white font-bold shadow-xs'
+                                  : isDarkMode
+                                  ? 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                                  : 'text-slate-600 hover:bg-emerald-50 hover:text-emerald-800'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2.5 truncate">
+                                <Icon className="w-4 h-4 shrink-0" />
+                                <span className="truncate">{item.label}</span>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* RBAC UNAUTHORIZED SHIELD */}
         {!isTabAccessible(currentUser.role, activeTab) ? (
           <UnauthorizedAccessGuard
@@ -1084,302 +1486,101 @@ export default function App() {
             onSelectUser={handleSelectUser}
           />
         ) : (
-          <>
-            {/* VIEW 0: DEDICATED PARENT PORTAL */}
-            {activeTab === 'parent-portal' && (
-              <ParentPortalView
-                currentUser={currentUser}
-                learners={learners}
-                timetableSlots={timetableSlots}
-                smsBroadcasts={smsBroadcasts}
-                onProcessPayment={handleProcessDarajaPayment}
-                onViewReportCard={(studentId) => {
-                  setSelectedStudentId(studentId);
-                  setActiveTab('report-card');
-                }}
-              />
+          <div className="flex gap-6 items-start">
+            {/* Desktop Left Sidebar: Grouped into Daily, Learning, Money, Operations, Government */}
+            {currentUser.role !== 'moe_director' && activeTab !== 'moe-oversight' && (
+              <aside className={`hidden lg:flex flex-col w-64 shrink-0 rounded-2xl border p-4 shadow-xs sticky top-24 transition-colors ${
+                isDarkMode ? 'bg-slate-900/90 border-slate-800 text-slate-200' : 'bg-white border-slate-200 text-slate-700'
+              }`}>
+                <div className="space-y-5">
+                  {SCHOOL_SIDEBAR_GROUPS.map((group) => {
+                    const accessibleItems = group.items.filter((item) => isTabAccessible(currentUser.role, item.id));
+                    if (accessibleItems.length === 0) return null;
+                    return (
+                      <div key={group.name} className="space-y-1.5">
+                        <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-2.5">
+                          {group.name}
+                        </h4>
+                        <div className="space-y-0.5">
+                          {accessibleItems.map((item) => {
+                            const Icon = item.icon;
+                            const isActive = activeTab === item.id;
+                            return (
+                              <button
+                                key={item.id}
+                                onClick={() => {
+                                  setActiveTab(item.id as ActiveTab);
+                                  if (soundEnabled) playSound('click');
+                                }}
+                                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+                                  isActive
+                                    ? 'bg-emerald-600 text-white shadow-xs font-bold'
+                                    : isDarkMode
+                                    ? 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                                    : 'text-slate-600 hover:bg-emerald-50 hover:text-emerald-800'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2.5 truncate">
+                                  <Icon className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                                  <span className="truncate">{item.label}</span>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </aside>
             )}
 
-            {/* VIEW 1: OVERVIEW DASHBOARD */}
-            {activeTab === 'dashboard' && (
-              <div className="space-y-6">
-                {/* Persona Operational Guidance Bar */}
-                {currentUser.role !== 'principal' && (
-                  <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold">
-                        <ShieldCheck className="w-4 h-4 text-emerald-700" />
-                      </div>
-                      <div>
-                        <div className="font-bold text-slate-900 flex items-center gap-2">
-                          <span>Operating as {currentUser.title}</span>
-                          <span className="text-[10px] uppercase font-bold px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 border border-slate-200">
-                            {currentUser.role.replace('_', ' ')}
-                          </span>
-                        </div>
-                        <p className="text-slate-500 text-[11px] mt-0.5">
-                          {ROLE_CONFIGS[currentUser.role].shortDescription}
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => setIsPermissionModalOpen(true)}
-                      className="px-3 py-1.5 rounded-md bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 font-semibold transition-colors"
-                    >
-                      Audit RBAC Privileges
-                    </button>
-                  </div>
-                )}
-            {/* Top 4 KPI Metric Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-xs">
-                <div className="flex items-center justify-between text-slate-500 mb-2 text-xs font-medium">
-                  <span>Grade 1 to 9 Enrollment</span>
-                  <Users className="w-4 h-4 text-emerald-700" />
-                </div>
-                <div className="text-2xl font-bold text-slate-900 tabular-nums">
-                  {summaryMetrics.totalStudents} Learners
-                </div>
-                <div className="mt-2 text-xs text-slate-500 flex items-center justify-between">
-                  <span className="text-emerald-700 font-semibold">Lower & Upper Pri + JSS</span>
-                  <span className="text-slate-400">100% NEMIS UPI</span>
-                </div>
-              </div>
+            {/* Main Content Area */}
+            <div className="flex-1 min-w-0">
+              {/* VIEW 0: DEDICATED PARENT PORTAL */}
+              {activeTab === 'parent-portal' && (
+                <ParentPortalView
+                  currentUser={currentUser}
+                  learners={learners}
+                  timetableSlots={timetableSlots}
+                  smsBroadcasts={smsBroadcasts}
+                  onProcessPayment={handleProcessDarajaPayment}
+                  onViewReportCard={(studentId) => {
+                    setSelectedStudentId(studentId);
+                    setActiveTab('report-card');
+                  }}
+                />
+              )}
 
-              <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-xs">
-                <div className="flex items-center justify-between text-slate-500 mb-2 text-xs font-medium">
-                  <span>Term 1 Fee Collections</span>
-                  <CreditCard className="w-4 h-4 text-emerald-700" />
-                </div>
-                <div className="text-2xl font-bold text-slate-900 tabular-nums">
-                  KES {summaryMetrics.totalFeesPaid.toLocaleString()}
-                </div>
-                <div className="mt-2 text-xs text-slate-500 flex items-center justify-between">
-                  <span>Rate: <strong className="text-emerald-700 tabular-nums">{summaryMetrics.feeCollectionRate}%</strong></span>
-                  <span className="text-rose-600 tabular-nums">Bal: KES {summaryMetrics.totalFeesBalance.toLocaleString()}</span>
-                </div>
-              </div>
-
-              <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-xs">
-                <div className="flex items-center justify-between text-slate-500 mb-2 text-xs font-medium">
-                  <span>NG-CDF & Capitation Grants</span>
-                  <Layers className="w-4 h-4 text-emerald-700" />
-                </div>
-                <div className="text-2xl font-bold text-slate-900 tabular-nums">
-                  KES {summaryMetrics.totalBursaries.toLocaleString()}
-                </div>
-                <div className="mt-2 text-xs text-slate-500 flex items-center justify-between">
-                  <span className="text-emerald-700 font-semibold">Limuru CDF Active</span>
-                  <span className="text-slate-500">· {bursaries.length} Grants</span>
-                </div>
-              </div>
-
-              <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-xs">
-                <div className="flex items-center justify-between text-slate-500 mb-2 text-xs font-medium">
-                  <span>CBC Curriculum Mastery</span>
-                  <Award className="w-4 h-4 text-emerald-700" />
-                </div>
-                <div className="text-2xl font-bold text-slate-900 tabular-nums">
-                  {summaryMetrics.cbcMasteryIndex}% Proficient
-                </div>
-                <div className="mt-2 text-xs text-slate-500 flex items-center gap-1.5">
-                  <span className="text-emerald-700 font-semibold tabular-nums">{summaryMetrics.eeCount} EE</span>
-                  <span>·</span>
-                  <span className="text-sky-700 font-semibold tabular-nums">{summaryMetrics.meCount} ME</span>
-                  <span>·</span>
-                  <span className="text-amber-700 font-semibold tabular-nums">{summaryMetrics.aeCount} AE</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Quick Action Hero Banner */}
-            <div className="bg-gradient-to-r from-emerald-950 via-slate-900 to-teal-950 text-white rounded-2xl p-6 shadow-md border border-emerald-800/60 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
-              <div className="space-y-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold bg-emerald-900/90 text-emerald-300 border border-emerald-700/60 uppercase tracking-wider">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                    Ministry of Education CBC Academic & Financial Command Center
-                  </span>
-                  <span className="text-slate-400 text-xs">·</span>
-                  <span className="text-xs font-semibold text-emerald-200">
-                    Term 1 Week 7 · Kiambu Sub-County
-                  </span>
-                </div>
-
-                <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-                  Limuru Model Comprehensive School — Operations & Academic Governance
-                </h3>
-                <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
-                  Real-time administration connecting continuous CBC student competency assessments directly to teacher TPAD 2.0 appraisals, automated Safaricom Paybill 522123 fee reconciliation, and live MoE KEMIS capitation auditing.
-                </p>
-
-                {/* Live System Operational Chips */}
-                <div className="flex flex-wrap gap-2 pt-1 text-[11px]">
-                  <span className="px-2 py-0.5 rounded bg-slate-800/90 text-slate-300 border border-slate-700">
-                    Safaricom Daraja: <strong className="text-emerald-400">Paybill 522123 Live</strong>
-                  </span>
-                  <span className="px-2 py-0.5 rounded bg-slate-800/90 text-slate-300 border border-slate-700">
-                    KEMIS Handshake: <strong className="text-emerald-400">Civil Registry Active</strong>
-                  </span>
-                  <span className="px-2 py-0.5 rounded bg-slate-800/90 text-slate-300 border border-slate-700">
-                    Teacher TPAD 2.0: <strong className="text-emerald-400">Class Performance Linked</strong>
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-                <button
-                  onClick={() => setIsClassRenameModalOpen(true)}
-                  className="px-4 py-2 bg-amber-600/90 hover:bg-amber-600 text-white rounded-lg text-xs font-bold shadow-xs flex items-center gap-2 transition-colors border border-amber-400/40"
-                >
-                  <Layers className="w-4 h-4" />
-                  Rename Classes & Streams
-                </button>
-                <button
-                  onClick={() => setActiveTab('admissions')}
-                  className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-semibold shadow-xs flex items-center gap-2 transition-colors"
-                >
-                  <UserPlus className="w-4 h-4" />
-                  Grade 1-9 Registry
-                </button>
-                <button
-                  onClick={() => setActiveTab('tpad')}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 rounded-lg text-xs font-semibold shadow-xs flex items-center gap-2 transition-colors"
-                >
-                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                  TPAD Appraisals
-                </button>
-              </div>
-            </div>
-
-            {/* Dashboard 2-Column Section */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Left 2 Cols: Enrolled Cohort Snapshot */}
-              <div className="lg:col-span-2 bg-white rounded-lg border border-slate-200 shadow-xs overflow-hidden">
-                <div className="p-4 border-b border-slate-200 flex items-center justify-between">
-                  <div>
-                    <h3 className="text-sm font-semibold text-slate-900">Enrolled Learners (Grade 1 - 9)</h3>
-                    <p className="text-xs text-slate-500">NEMIS Unique Personal Identifiers & Fee Statuses</p>
-                  </div>
-                  <button
-                    onClick={() => setActiveTab('admissions')}
-                    className="text-xs text-emerald-700 font-semibold hover:underline"
-                  >
-                    View All {learners.length} Learners →
-                  </button>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
-                      <tr>
-                        <th className="p-3">Admission No</th>
-                        <th className="p-3">Learner Name</th>
-                        <th className="p-3">Grade & Stream</th>
-                        <th className="p-3">NEMIS UPI</th>
-                        <th className="p-3 text-right">Fee Balance</th>
-                        <th className="p-3 text-center">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {learners.slice(0, 6).map((std) => (
-                        <tr key={std.id} className="hover:bg-slate-50">
-                          <td className="p-3 font-mono font-medium text-slate-600">{std.admissionNo}</td>
-                          <td className="p-3 font-semibold text-slate-900">{std.name}</td>
-                          <td className="p-3 text-slate-700">{std.grade} ({std.stream})</td>
-                          <td className="p-3 font-mono text-slate-500">{std.nemisUpi}</td>
-                          <td className="p-3 text-right font-mono font-bold tabular-nums">
-                            {std.fees.balance === 0 ? (
-                              <span className="text-emerald-700">Cleared</span>
-                            ) : (
-                              <span className="text-rose-600">KES {std.fees.balance.toLocaleString()}</span>
-                            )}
-                          </td>
-                          <td className="p-3 text-center">
-                            <span
-                              className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                std.fees.status === 'Cleared'
-                                  ? 'bg-emerald-50 text-emerald-700'
-                                  : std.fees.status === 'Partial'
-                                  ? 'bg-amber-50 text-amber-700'
-                                  : 'bg-rose-50 text-rose-700'
-                              }`}
-                            >
-                              {std.fees.status}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* Right Col: M-Pesa & SMS Quick Feed */}
-              <div className="space-y-6">
-                <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-xs space-y-4">
-                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                    <div className="flex items-center gap-2">
-                      <Smartphone className="w-4 h-4 text-emerald-700" />
-                      <h4 className="text-sm font-semibold text-slate-900">Recent M-Pesa Push</h4>
-                    </div>
-                    <button
-                      onClick={() => setActiveTab('daraja')}
-                      className="text-xs text-emerald-700 font-semibold hover:underline"
-                    >
-                      Daraja Sync →
-                    </button>
-                  </div>
-
-                  <div className="space-y-3">
-                    {darajaPayments.slice(0, 3).map((p, idx) => (
-                      <div key={idx} className="p-2.5 rounded bg-slate-50 border border-slate-100 text-xs flex justify-between items-center">
-                        <div>
-                          <strong className="text-slate-800 block">{p.matchedLearnerName}</strong>
-                          <span className="text-[11px] text-slate-500 font-mono">{p.transId} · {p.billRefNumber}</span>
-                        </div>
-                        <div className="text-right">
-                          <strong className="text-emerald-700 font-bold tabular-nums block">
-                            KES {p.transAmount.toLocaleString()}
-                          </strong>
-                          <span className="text-[10px] text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded">
-                            Auto-Credited
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-xs space-y-3">
-                  <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                    <div className="flex items-center gap-2">
-                      <Radio className="w-4 h-4 text-emerald-700" />
-                      <h4 className="text-sm font-semibold text-slate-900">Latest SMS Broadcast</h4>
-                    </div>
-                    <button
-                      onClick={() => setActiveTab('sms')}
-                      className="text-xs text-emerald-700 font-semibold hover:underline"
-                    >
-                      Open Gateway →
-                    </button>
-                  </div>
-                  {smsBroadcasts[0] && (
-                    <div className="text-xs space-y-1">
-                      <span className="font-bold text-slate-800">{smsBroadcasts[0].type}</span>
-                      <p className="text-slate-600 line-clamp-3 text-[11px] leading-relaxed">
-                        &quot;{smsBroadcasts[0].message}&quot;
-                      </p>
-                      <div className="text-[10px] text-slate-400 pt-1 flex justify-between">
-                        <span>{smsBroadcasts[0].recipientsCount} Guardians</span>
-                        <span className="text-emerald-700 font-bold">{smsBroadcasts[0].deliveryRate}% Delivered</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+              {/* VIEW 1: OVERVIEW DASHBOARD */}
+              {activeTab === 'dashboard' && (
+                <SchoolPlatformDashboard
+                  currentUser={currentUser}
+                  isDarkMode={isDarkMode}
+                  learners={learners}
+                  darajaPayments={darajaPayments}
+                  smsBroadcasts={smsBroadcasts}
+                  onOpenAdmitModal={() => {
+                    setIsAdmissionModalOpen(true);
+                    if (soundEnabled) playSound('click');
+                  }}
+                  onOpenClassRenameModal={() => {
+                    setIsClassRenameModalOpen(true);
+                    if (soundEnabled) playSound('click');
+                  }}
+                  onOpenUploadMarksheet={() => marksheetFileInputRef.current?.click()}
+                  onOpenAddFeesExcel={() => feeExcelFileInputRef.current?.click()}
+                  onProcessPayment={handleProcessDarajaPayment}
+                  onSimulatePush={handleSimulateDarajaPush}
+                  onUpdateLearnerUpi={handleUpdateLearnerUpi}
+                  onSendSmsReminder={handleSendSmsReminder}
+                  onSelectTab={(tab) => {
+                    setActiveTab(tab);
+                    if (soundEnabled) playSound('click');
+                  }}
+                  onLogAudit={handleLogAudit}
+                />
+              )}
 
         {/* VIEW 2: ADMISSIONS & NEMIS ENROLLMENT (GRADES 1-9) */}
         {activeTab === 'admissions' && (
@@ -1985,11 +2186,142 @@ export default function App() {
               </div>
 
               <button
-                onClick={() => window.print()}
-                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded text-xs font-semibold flex items-center gap-2 shadow-xs transition-colors"
+                onClick={() => {
+                  openPrintPreview({
+                    title: `CBC LEARNER ASSESSMENT & COMPETENCY PROGRESS REPORT · ${currentStudent.grade.toUpperCase()}`,
+                    subtitle: `Official Kenya Ministry of Education Assessment Return · Academic Year 2026 Term 1`,
+                    documentNumber: `REP-${currentStudent.admissionNo.replace(/[^a-zA-Z0-9]/g, '')}`,
+                    category: 'Academic Report',
+                    orientation: 'portrait',
+                    showSignatures: true,
+                    showOfficialStamp: true,
+                    content: (
+                      <div className="space-y-4">
+                        {/* Biodata */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3 bg-slate-50 rounded border border-slate-300 text-xs">
+                          <div>
+                            <span className="text-slate-500 block text-[10px] uppercase font-bold">Learner Name:</span>
+                            <strong className="text-slate-900">{currentStudent.name}</strong>
+                          </div>
+                          <div>
+                            <span className="text-slate-500 block text-[10px] uppercase font-bold">Admission Number:</span>
+                            <strong className="font-mono text-slate-900">{currentStudent.admissionNo}</strong>
+                          </div>
+                          <div>
+                            <span className="text-slate-500 block text-[10px] uppercase font-bold">NEMIS UPI:</span>
+                            <strong className="font-mono text-slate-900">{currentStudent.nemisUpi}</strong>
+                          </div>
+                          <div>
+                            <span className="text-slate-500 block text-[10px] uppercase font-bold">Grade & Stream:</span>
+                            <strong className="text-slate-900">{currentStudent.grade} ({currentStudent.stream})</strong>
+                          </div>
+                          <div>
+                            <span className="text-slate-500 block text-[10px] uppercase font-bold">Gender:</span>
+                            <strong className="text-slate-900">{currentStudent.gender}</strong>
+                          </div>
+                          <div>
+                            <span className="text-slate-500 block text-[10px] uppercase font-bold">Date of Birth:</span>
+                            <strong className="text-slate-900">{currentStudent.dob}</strong>
+                          </div>
+                          <div>
+                            <span className="text-slate-500 block text-[10px] uppercase font-bold">Attendance:</span>
+                            <strong className="text-emerald-700">{currentStudent.attendancePercent}%</strong>
+                          </div>
+                          <div>
+                            <span className="text-slate-500 block text-[10px] uppercase font-bold">Fee Status:</span>
+                            <strong className={currentStudent.fees.balance === 0 ? 'text-emerald-700' : 'text-rose-700'}>
+                              {currentStudent.fees.status} (KES {currentStudent.fees.balance.toLocaleString()})
+                            </strong>
+                          </div>
+                        </div>
+
+                        {/* Learning Areas Table */}
+                        <div>
+                          <div className="text-[11px] font-bold uppercase tracking-wider text-slate-900 mb-1.5 pb-1 border-b border-slate-300">
+                            1. Core Learning Areas Performance Evaluation (KICD Guidelines)
+                          </div>
+                          <table className="w-full text-left text-xs border border-slate-300">
+                            <thead className="bg-slate-100 text-slate-800 font-bold border-b border-slate-300 text-[10px] uppercase">
+                              <tr>
+                                <th className="p-2 border-r border-slate-300">Learning Area</th>
+                                <th className="p-2 text-center border-r border-slate-300">Summative Mark</th>
+                                <th className="p-2 text-center border-r border-slate-300">Performance Level</th>
+                                <th className="p-2">Educator Remarks & Rubric Notes</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-200">
+                              {ALL_LEARNING_AREAS.slice(0, 7).map((subj) => {
+                                const ass = currentStudent.assessments[subj.id] || {
+                                  formative: 'ME',
+                                  summativeScore: 78,
+                                  level: 'ME',
+                                  remarks: 'Demonstrates good competence.',
+                                };
+                                return (
+                                  <tr key={subj.id}>
+                                    <td className="p-2 font-medium border-r border-slate-200 text-slate-900">{subj.name}</td>
+                                    <td className="p-2 text-center font-mono font-bold border-r border-slate-200 tabular-nums">
+                                      {ass.summativeScore}%
+                                    </td>
+                                    <td className="p-2 text-center font-bold border-r border-slate-200">
+                                      <span
+                                        className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                          ass.level === 'EE'
+                                            ? 'bg-emerald-100 text-emerald-800'
+                                            : ass.level === 'ME'
+                                            ? 'bg-sky-100 text-sky-800'
+                                            : ass.level === 'AE'
+                                            ? 'bg-amber-100 text-amber-800'
+                                            : 'bg-rose-100 text-rose-800'
+                                        }`}
+                                      >
+                                        {ass.level} ({ass.level === 'EE' ? 'Exceeding' : ass.level === 'ME' ? 'Meeting' : ass.level === 'AE' ? 'Approaching' : 'Below'})
+                                      </span>
+                                    </td>
+                                    <td className="p-2 text-slate-600 text-[11px]">{ass.remarks}</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {/* Core Competencies & Values */}
+                        <div className="grid grid-cols-2 gap-4 text-xs pt-1">
+                          <div className="p-3 bg-slate-50 border border-slate-200 rounded">
+                            <div className="font-bold text-slate-800 uppercase text-[10px] mb-2">
+                              Core CBC Competencies Rating (1-5)
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 text-[11px]">
+                              <div>Communication: <strong>{currentStudent.competencies.communication}/5</strong></div>
+                              <div>Critical Thinking: <strong>{currentStudent.competencies.criticalThinking}/5</strong></div>
+                              <div>Digital Literacy: <strong>{currentStudent.competencies.digitalLiteracy}/5</strong></div>
+                              <div>Citizenship: <strong>{currentStudent.competencies.citizenship}/5</strong></div>
+                              <div>Creativity: <strong>{currentStudent.competencies.creativity}/5</strong></div>
+                              <div>Self-Efficacy: <strong>{currentStudent.competencies.selfEfficacy}/5</strong></div>
+                            </div>
+                          </div>
+
+                          <div className="p-3 bg-slate-50 border border-slate-200 rounded flex flex-col justify-between">
+                            <div>
+                              <div className="font-bold text-slate-800 uppercase text-[10px] mb-1">
+                                Values & Character Assessment
+                              </div>
+                              <p className="text-[11px] text-slate-700 italic">"{currentStudent.valuesNotes}"</p>
+                            </div>
+                            <div className="text-[10px] font-semibold text-slate-500 pt-2 border-t border-slate-200">
+                              Discipline Record: {currentStudent.disciplineIncidents.length === 0 ? 'Exemplary Conduct (0 Incidents)' : `${currentStudent.disciplineIncidents.length} Logged Incidents`}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ),
+                  });
+                }}
+                className="px-4 py-2 bg-emerald-800 hover:bg-emerald-700 text-white rounded text-xs font-semibold flex items-center gap-2 shadow-xs transition-colors"
               >
                 <Printer className="w-4 h-4" />
-                Print Official MoE Report Card
+                Print Official MoE Report Card (Preview)
               </button>
             </div>
 
@@ -2206,9 +2538,68 @@ export default function App() {
             onLogAudit={handleLogAudit}
           />
         )}
-      </>
-    )}
-  </main>
+
+        {/* VIEW 22: SCHOOL-SIDE MOE STATUTORY RETURNS & AUDIT UPLOADS */}
+        {activeTab === 'school-moe-returns' && (
+          <SchoolMoeComplianceReturnsModule
+            currentUser={currentUser}
+            statutoryReports={INITIAL_MOE_STATUTORY_REPORTS}
+            suffixAudits={INITIAL_SUFFIX_AUDITS}
+            knecMappings={INITIAL_KNEC_MAPPINGS}
+            teacherWorkloads={INITIAL_TEACHER_WORKLOADS}
+            stemLabAudits={INITIAL_STEM_LAB_AUDITS}
+            sanitationAudits={INITIAL_SANITATION_AUDITS}
+            capitationReconciliations={INITIAL_CAPITATION_RECONCILIATIONS}
+            uniformReturns={INITIAL_UNIFORM_COST_RETURNS}
+            sneReturns={INITIAL_SNE_RETURNS}
+            safetyReturns={INITIAL_SAFETY_RETURNS}
+            transitionReturns={INITIAL_TRANSITION_RETURNS}
+            priorityItems={INITIAL_PRIORITY_ACTION_ITEMS}
+            onUpdateStatutoryReport={(up) => {
+              handleLogAudit('MOE_COMPLIANCE_EDIT', `Report ${up.officialRefNumber}`, `Updated ${up.reportName}`);
+            }}
+            onUpdateSuffixAudit={(up) => {
+              handleLogAudit('MOE_COMPLIANCE_EDIT', `Suffix ${up.suffixCode}`, `Updated suffix audit`);
+            }}
+            onUpdateKnecMapping={(up) => {
+              handleLogAudit('MOE_COMPLIANCE_EDIT', `KNEC ${up.nemisUpi}`, `Updated KNEC mapping`);
+            }}
+            onUpdateTeacherWorkload={(up) => {
+              handleLogAudit('MOE_COMPLIANCE_EDIT', `Teacher ${up.tscNumber}`, `Updated workload`);
+            }}
+            onUpdateStemLab={(up) => {
+              handleLogAudit('MOE_COMPLIANCE_EDIT', `STEM Lab ${up.centerCode}`, `Updated lab audit`);
+            }}
+            onUpdateSanitation={(up) => {
+              handleLogAudit('MOE_COMPLIANCE_EDIT', `Sanitation ${up.centerCode}`, `Updated sanitation`);
+            }}
+            onUpdateCapitationReconciliation={(up) => {
+              handleLogAudit('MOE_COMPLIANCE_EDIT', `Capitation ${up.centerCode}`, `Updated capitation`);
+            }}
+            onUpdateUniformReturn={(up) => {
+              handleLogAudit('MOE_COMPLIANCE_EDIT', `Uniform ${up.centerCode}`, `Updated uniform disclosure`);
+            }}
+            onUpdateSneReturn={(up) => {
+              handleLogAudit('MOE_COMPLIANCE_EDIT', `SNE ${up.nemisUpi}`, `Updated SNE`);
+            }}
+            onUpdateSafetyReturn={(up) => {
+              handleLogAudit('MOE_COMPLIANCE_EDIT', `Safety ${up.centerCode}`, `Updated safety cert`);
+            }}
+            onUpdateTransitionReturn={(up) => {
+              handleLogAudit('MOE_COMPLIANCE_EDIT', `Transition ${up.nemisUpi}`, `Updated transition status`);
+            }}
+            onLogAudit={handleLogAudit}
+          />
+        )}
+
+        {/* VIEW 23: USER MANAGEMENT MODULE (HEAD TEACHER ONLY) */}
+        {activeTab === 'user-management' && (
+          <UserManagementModule />
+        )}
+            </div>
+          </div>
+        )}
+      </main>
 
   {/* =========================================================================
       GLOBAL MODALS (ADMISSION, BULK MARKSHEET, EXCEL FEE BATCH, RBAC MATRIX, AUTH)
@@ -2294,6 +2685,41 @@ export default function App() {
     />
   )}
 
+      {/* Universal Print Preview Modal for All Reports */}
+      <PrintPreviewModal />
+
+      {/* Sign Out Confirmation Modal */}
+      {isSignOutConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 text-center">
+            <div className="w-12 h-12 rounded-full bg-rose-100 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 mx-auto flex items-center justify-center mb-4">
+              <LogOut className="w-6 h-6" />
+            </div>
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white">Sign Out Confirmation</h3>
+            <p className="text-xs text-slate-600 dark:text-slate-400 mt-2">
+              Are you sure you want to end your authenticated session as <strong className="text-slate-900 dark:text-white">{authUser?.fullName}</strong>?
+            </p>
+            <div className="mt-6 flex items-center justify-center gap-3">
+              <button
+                onClick={() => setIsSignOutConfirmOpen(false)}
+                className="px-4 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  setIsSignOutConfirmOpen(false);
+                  await logout();
+                }}
+                className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg transition-colors shadow-sm"
+              >
+                Yes, Sign Out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Quiet Institutional Footer */}
       <footer className="no-print bg-white border-t border-slate-200 py-4 mt-auto text-xs text-slate-500">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-3">
@@ -2310,3 +2736,14 @@ export default function App() {
     </div>
   );
 }
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <PrintPreviewProvider>
+        <SchoolApp />
+      </PrintPreviewProvider>
+    </AuthProvider>
+  );
+}
+

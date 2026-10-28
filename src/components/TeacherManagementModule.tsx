@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Users,
   UserPlus,
@@ -23,6 +23,9 @@ import {
   Briefcase,
   GraduationCap,
   Sparkles,
+  Printer,
+  FileSpreadsheet,
+  Upload,
 } from 'lucide-react';
 import {
   TeacherStaffRecord,
@@ -30,6 +33,7 @@ import {
   AuthUser,
 } from '../types/school';
 import { ALL_GRADES } from '../data/mockSchoolData';
+import { exportToExcel } from '../utils/excelExport';
 
 interface TeacherManagementModuleProps {
   currentUser: AuthUser;
@@ -124,6 +128,86 @@ export const TeacherManagementModule: React.FC<TeacherManagementModuleProps> = (
     setSelectedSubjects(['Mathematics']);
   };
 
+  const [feedbackToast, setFeedbackToast] = useState<string | null>(null);
+  const importStaffFileRef = useRef<HTMLInputElement>(null);
+
+  const showToast = (msg: string) => {
+    setFeedbackToast(msg);
+    setTimeout(() => setFeedbackToast(null), 3500);
+  };
+
+  const handleExportExcel = () => {
+    exportToExcel(
+      'Limuru_Model_Teaching_Faculty_Register',
+      filteredTeachers,
+      [
+        { header: 'Educator Name', key: 'name' },
+        { header: 'TSC / ID Number', key: 'tscOrIdNo' },
+        { header: 'National ID', key: 'nationalId' },
+        { header: 'Cadre', key: 'cadre' },
+        { header: 'Role', key: 'role' },
+        { header: 'Assigned Grade', key: 'assignedGrade' },
+        { header: 'Assigned Stream', key: 'assignedStream' },
+        { header: 'Teaching Subjects', key: (t) => t.assignedSubjects.join(', ') },
+        { header: 'Phone Number', key: 'phone' },
+        { header: 'Email Address', key: 'email' },
+        { header: 'Date of Joining', key: 'dateOfJoining' },
+        { header: 'Basic Salary (KES)', key: 'basicSalary' },
+        { header: 'Qualification', key: 'qualification' },
+      ]
+    );
+    showToast('Exported teaching faculty register to Excel.');
+  };
+
+  const handleImportStaffCsv = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const text = evt.target?.result as string;
+        const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+        let importedCount = 0;
+
+        for (let i = 1; i < lines.length; i++) {
+          const cols = lines[i].split(',').map((c) => c.trim().replace(/^"|"$/g, ''));
+          if (cols.length >= 3 && cols[0]) {
+            const newTch: TeacherStaffRecord = {
+              id: 'tch_csv_' + Date.now() + '_' + i,
+              name: cols[0],
+              tscOrIdNo: cols[1] || `TSC-${Math.floor(100000 + Math.random() * 800000)}`,
+              nationalId: cols[2] || `ID-${Math.floor(20000000 + Math.random() * 10000000)}`,
+              phone: cols[3] || '+254 700 000000',
+              email: cols[4] || `${cols[0].toLowerCase().replace(/[^a-z]/g, '')}@limurumodel.sc.ke`,
+              cadre: (cols[5] as any) || 'TSC Permanent',
+              role: (cols[6] as any) || 'Subject Teacher',
+              assignedGrade: (cols[7] as any) || 'Grade 7',
+              assignedStream: cols[8] || '7 Amboseli',
+              assignedSubjects: cols[9] ? cols[9].split(';') : ['General Studies'],
+              dateOfJoining: cols[10] || new Date().toISOString().substring(0, 10),
+              basicSalary: Number(cols[11]) || 55000,
+              qualification: cols[12] || 'B.Ed Science',
+              status: 'Active',
+            };
+            onAddTeacher(newTch);
+            importedCount++;
+          }
+        }
+        showToast(`Successfully imported ${importedCount} faculty records from ${file.name}.`);
+        onLogAudit(
+          'TEACHER_ONBOARDED',
+          'Faculty CSV Batch Import',
+          `Imported ${importedCount} educators via ${file.name}.`
+        );
+      } catch (err) {
+        showToast('Error parsing faculty CSV file.');
+      }
+    };
+    reader.readAsText(file);
+    if (e.target) e.target.value = '';
+  };
+
   const filteredTeachers = teachers.filter((t) => {
     if (cadreFilter !== 'All' && t.cadre !== cadreFilter) return false;
     if (roleFilter !== 'All' && t.role !== roleFilter) return false;
@@ -143,6 +227,28 @@ export const TeacherManagementModule: React.FC<TeacherManagementModuleProps> = (
 
   return (
     <div className="space-y-6">
+      {/* Toast Notification */}
+      {feedbackToast && (
+        <div className="p-3 bg-emerald-900 text-white rounded-xl text-xs font-bold shadow-lg flex items-center justify-between animate-in fade-in duration-200">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+            <span>{feedbackToast}</span>
+          </div>
+          <button onClick={() => setFeedbackToast(null)} className="text-emerald-300 hover:text-white">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Hidden File Input for CSV Import */}
+      <input
+        type="file"
+        ref={importStaffFileRef}
+        onChange={handleImportStaffCsv}
+        accept=".csv,.txt"
+        className="hidden"
+      />
+
       {/* Header & Metric Banner */}
       <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
@@ -159,14 +265,47 @@ export const TeacherManagementModule: React.FC<TeacherManagementModuleProps> = (
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Print Button */}
+          <button
+            onClick={() => window.print()}
+            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-xs font-bold shadow-xs transition-colors flex items-center gap-1.5 border border-slate-300"
+            title="Print Faculty Directory"
+          >
+            <Printer className="w-3.5 h-3.5 text-slate-600" />
+            <span>Print Register</span>
+          </button>
+
+          {/* Export to Excel */}
+          <button
+            onClick={handleExportExcel}
+            className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 rounded-lg text-xs font-bold shadow-xs transition-colors flex items-center gap-1.5 border border-emerald-300"
+            title="Export faculty to Excel / CSV"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
+            <span>Export Excel</span>
+          </button>
+
+          {/* Import CSV */}
+          {canManageTeachers && (
+            <button
+              onClick={() => importStaffFileRef.current?.click()}
+              className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold shadow-xs transition-colors flex items-center gap-1.5"
+              title="Import Teachers via CSV"
+            >
+              <Upload className="w-3.5 h-3.5 text-slate-200" />
+              <span>Import (.csv)</span>
+            </button>
+          )}
+
+          {/* Add New Teacher */}
           {canManageTeachers && (
             <button
               onClick={() => setIsModalOpen(true)}
-              className="px-4 py-2 bg-emerald-800 hover:bg-emerald-900 text-white rounded-lg text-xs font-bold shadow-xs transition-colors flex items-center gap-2"
+              className="px-4 py-1.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-lg text-xs font-bold shadow-xs transition-colors flex items-center gap-1.5"
             >
               <UserPlus className="w-4 h-4" />
-              Add New Teacher
+              <span>Add New Teacher</span>
             </button>
           )}
         </div>

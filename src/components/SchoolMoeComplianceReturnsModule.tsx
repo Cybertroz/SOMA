@@ -698,28 +698,22 @@ export function SchoolMoeComplianceReturnsModule({
                         <span className="block text-[10px] text-slate-500 font-mono">TSC: {t.tscNumber}</span>
                       </td>
                       <td className="p-3 text-slate-700">
-                        {t.schoolName}
+                        {t.subCounty}
                         <span className="block text-[10px] text-slate-500">{t.campusSuffix}</span>
                       </td>
                       <td className="p-3 text-slate-800">
-                        <span className="font-medium">{t.assignedSubjects.join(', ')}</span>
+                        <span className="font-medium">{t.primarySubject} &amp; {t.secondarySubject}</span>
                       </td>
-                      <td className="p-3 font-mono font-bold text-slate-800">{t.lessonsPerWeek}</td>
+                      <td className="p-3 font-mono font-bold text-slate-800">{t.teachingLoadLessonsPerWeek}</td>
                       <td className="p-3">
-                        <span
-                          className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                            t.utilizationRatePercent >= 100
-                              ? 'bg-amber-100 text-amber-800'
-                              : 'bg-emerald-100 text-emerald-800'
-                          }`}
-                        >
-                          {t.utilizationStatus} ({t.utilizationRatePercent}%)
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                          {t.utilizationStatus}
                         </span>
                       </td>
                       <td className="p-3">
-                        {t.criticalShortageAreaFlag ? (
+                        {t.staffingDeficitArea !== 'None (Adequate)' ? (
                           <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800">
-                            {t.shortageSubjectName} Shortage
+                            {t.staffingDeficitArea}
                           </span>
                         ) : (
                           <span className="text-slate-400 text-[10px]">Optimal</span>
@@ -955,10 +949,10 @@ export function SchoolMoeComplianceReturnsModule({
                     [
                       { header: 'Student Name', key: 'studentName' },
                       { header: 'NEMIS UPI', key: 'nemisUpi' },
-                      { header: 'KNEC Assessment Index', key: 'knecAssessmentIndex' },
+                      { header: 'KNEC Assessment Index', key: 'knecAssessmentIndexNo' },
                       { header: 'Birth Cert Entry', key: 'birthCertificateEntryNo' },
                       { header: 'Grade', key: 'grade' },
-                      { header: 'Assessment Exam', key: 'assessmentExam' },
+                      { header: 'Assessment Exam', key: 'assessmentExamType' },
                       { header: 'Mapping Status', key: 'mappingStatus' },
                     ]
                   );
@@ -990,8 +984,8 @@ export function SchoolMoeComplianceReturnsModule({
                       <td className="p-3 font-semibold text-slate-900">{km.studentName}</td>
                       <td className="p-3 font-mono text-[11px] text-emerald-800 font-bold">{km.nemisUpi}</td>
                       <td className="p-3 font-mono text-slate-600">{km.birthCertificateEntryNo}</td>
-                      <td className="p-3 font-mono font-bold text-teal-800">{km.knecAssessmentIndex}</td>
-                      <td className="p-3 text-slate-700">{km.assessmentExam} ({km.grade})</td>
+                      <td className="p-3 font-mono font-bold text-teal-800">{km.knecAssessmentIndexNo}</td>
+                      <td className="p-3 text-slate-700">{km.assessmentExamType} ({km.grade})</td>
                       <td className="p-3">
                         <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
                           {km.mappingStatus}
@@ -1908,14 +1902,14 @@ export function SchoolMoeComplianceReturnsModule({
               onSubmit={(e) => {
                 e.preventDefault();
                 const formData = new FormData(e.currentTarget);
-                const knecIndex = String(formData.get('knecAssessmentIndex') || editingKnec.knecAssessmentIndex);
+                const knecIndex = String(formData.get('knecAssessmentIndexNo') || editingKnec.knecAssessmentIndexNo);
                 const birthCert = String(formData.get('birthCertificateEntryNo') || editingKnec.birthCertificateEntryNo);
 
                 onUpdateKnecMapping({
                   ...editingKnec,
-                  knecAssessmentIndex: knecIndex,
+                  knecAssessmentIndexNo: knecIndex,
                   birthCertificateEntryNo: birthCert,
-                  mappingStatus: 'Verified 1:1 Linked',
+                  mappingStatus: '100% Verified Mapped',
                 });
                 setEditingKnec(null);
                 handleEditSave('KNEC Learner Mapping', editingKnec.nemisUpi);
@@ -1925,8 +1919,8 @@ export function SchoolMoeComplianceReturnsModule({
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">KNEC Assessment Index Number</label>
                 <input
-                  name="knecAssessmentIndex"
-                  defaultValue={editingKnec.knecAssessmentIndex}
+                  name="knecAssessmentIndexNo"
+                  defaultValue={editingKnec.knecAssessmentIndexNo}
                   required
                   className="w-full border border-slate-300 rounded-lg p-2.5 text-xs font-mono font-bold text-teal-800"
                 />

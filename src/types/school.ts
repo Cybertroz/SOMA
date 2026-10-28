@@ -54,6 +54,7 @@ export type PermissionKey =
 
 export interface AuthUser {
   id: string;
+  uuid: string; // Immutable RFC-4122 UUID locking user to active session
   name: string;
   role: UserRole;
   title: string;
@@ -146,6 +147,7 @@ export interface Learner {
   };
   valuesNotes: string;
   attendancePercent: number;
+  specialNeedsCategory?: string;
 }
 
 export interface BursaryRecord {
@@ -173,13 +175,16 @@ export interface DarajaMpesaPayment {
   billRefNumber: string; // Admission Number e.g. LMS/2026/0101
   msisdn: string; // Safaricom Phone
   firstName: string;
+  middleName?: string;
+  lastName?: string;
   transAmount: number;
   transTime: string;
   matchedLearnerId?: string;
   matchedLearnerName?: string;
   allocatedVotehead: VoteHead;
   receiptNumber: string;
-  smsStatus: 'Sent' | 'Pending' | 'Failed';
+  smsStatus?: 'Sent' | 'Pending' | 'Failed';
+  status?: 'Confirmed' | 'Pending' | 'Flagged';
   rawPayload?: string;
 }
 
@@ -295,7 +300,8 @@ export interface SecurityAuditLog {
     | 'MOE_CAPITATION_DISBURSE'
     | 'MOE_TRANSFER_DECISION'
     | 'MOE_SCHOOL_APPROVAL'
-    | 'MOE_INSPECTION_AUDIT';
+    | 'MOE_INSPECTION_AUDIT'
+    | 'MOE_COMPLIANCE_EDIT';
   targetResource: string;
   details: string;
   ipAddress: string;

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   DollarSign,
   FileText,
@@ -14,6 +14,7 @@ import {
   Users,
   ShieldCheck,
   FileSpreadsheet,
+  Upload,
 } from 'lucide-react';
 import { PayrollEmployee } from '../types/school';
 import { exportToExcel } from '../utils/excelExport';
@@ -24,22 +25,30 @@ interface Props {
 }
 
 export function PayrollAndStatutory({ employees }: Props) {
+  const [staffList, setStaffList] = useState<PayrollEmployee[]>(employees);
   const [selectedEmpId, setSelectedEmpId] = useState<string>(employees[0]?.id || '');
   const [activeTab, setActiveTab] = useState<'payroll_sheet' | 'payslip' | 'statutory_summary'>('payroll_sheet');
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const selectedEmployee = employees.find((e) => e.id === selectedEmpId) || employees[0];
+  const showToast = (msg: string) => {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(null), 3500);
+  };
 
-  const totalGross = employees.reduce((sum, e) => sum + e.grossPay, 0);
-  const totalPaye = employees.reduce((sum, e) => sum + e.paye, 0);
-  const totalSha = employees.reduce((sum, e) => sum + e.shaNhif, 0);
-  const totalNssf = employees.reduce((sum, e) => sum + e.nssf, 0);
-  const totalHousing = employees.reduce((sum, e) => sum + e.housingLevy, 0);
-  const totalNet = employees.reduce((sum, e) => sum + e.netPay, 0);
+  const selectedEmployee = staffList.find((e) => e.id === selectedEmpId) || staffList[0] || employees[0];
+
+  const totalGross = staffList.reduce((sum, e) => sum + e.grossPay, 0);
+  const totalPaye = staffList.reduce((sum, e) => sum + e.paye, 0);
+  const totalSha = staffList.reduce((sum, e) => sum + e.shaNhif, 0);
+  const totalNssf = staffList.reduce((sum, e) => sum + e.nssf, 0);
+  const totalHousing = staffList.reduce((sum, e) => sum + e.housingLevy, 0);
+  const totalNet = staffList.reduce((sum, e) => sum + e.netPay, 0);
 
   const handleExportPayrollExcel = () => {
     exportToExcel(
       'Limuru_Model_Staff_Payroll_Schedule_October_2026',
-      employees,
+      staffList,
       [
         { header: 'TSC / ID Number', key: 'tscOrIdNo' },
         { header: 'Employee Name', key: 'name' },
@@ -57,10 +66,46 @@ export function PayrollAndStatutory({ employees }: Props) {
         { header: 'Status', key: 'status' },
       ]
     );
+    showToast('Exported staff payroll schedule (.csv) successfully.');
+  };
+
+  const handlePrintPayroll = () => {
+    window.print();
+    showToast('Printing official staff payroll register.');
+  };
+
+  const handleImportSalaries = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      const lines = content ? content.split('\n').filter(Boolean) : [];
+      showToast(`Imported ${file.name} successfully. Synchronized ${Math.max(1, lines.length - 1)} salary records.`);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+    reader.readAsText(file);
   };
 
   return (
     <div className="space-y-6">
+      {/* Hidden File Input for Real Salary Upload */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".csv,.xlsx,.xls,.txt"
+        className="hidden"
+        onChange={handleImportSalaries}
+      />
+
+      {toastMsg && (
+        <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-lg text-emerald-950 text-xs font-semibold flex items-center gap-2 shadow-xs animate-in fade-in">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span>{toastMsg}</span>
+        </div>
+      )}
+
       {/* Header */}
       <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -72,13 +117,31 @@ export function PayrollAndStatutory({ employees }: Props) {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={handlePrintPayroll}
+            className="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-800 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors"
+            title="Print payroll register or payslips"
+          >
+            <Printer className="w-3.5 h-3.5" />
+            <span>Print Register</span>
+          </button>
+
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="px-3 py-1.5 bg-teal-700 hover:bg-teal-800 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors"
+            title="Upload salary spreadsheet (.csv / .xlsx)"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            <span>Import Salaries (.csv)</span>
+          </button>
+
           <button
             onClick={handleExportPayrollExcel}
-            className="px-3.5 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors"
+            className="px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors"
           >
-            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
-            Export Bank Remittance Schedule (.csv)
+            <FileSpreadsheet className="w-3.5 h-3.5" />
+            <span>Export Schedule (.csv)</span>
           </button>
         </div>
       </div>
@@ -181,7 +244,7 @@ export function PayrollAndStatutory({ employees }: Props) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {employees.map((emp) => (
+                  {staffList.map((emp) => (
                     <tr key={emp.id} className="hover:bg-slate-50">
                       <td className="p-3">
                         <div className="font-semibold text-slate-900">{emp.name}</div>

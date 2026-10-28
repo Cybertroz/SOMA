@@ -13,7 +13,7 @@ export function exportToExcel<T>(
   columns: { header: string; key: keyof T | ((item: T) => unknown) }[]
 ) {
   if (!data || data.length === 0) {
-    alert('No data available to export.');
+    console.warn('No data available to export.');
     return;
   }
 

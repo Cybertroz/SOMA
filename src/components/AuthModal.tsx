@@ -72,6 +72,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       // Create user session based on email
       const customUser: AuthUser = {
         id: 'usr_' + Date.now(),
+        uuid: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'f47ac10b-58cc-4372-a567-0e02b2c3d479',
         name: loginEmail.split('@')[0] || 'Staff Member',
         role: 'teacher',
         title: 'Academic Staff',
@@ -94,6 +95,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
     const newUser: AuthUser = {
       id: 'usr_' + Date.now(),
+      uuid: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'c83b27b1-4f9a-41d3-a3d8-5b4a921d7842',
       name: signupName.trim(),
       role: signupRole,
       title:

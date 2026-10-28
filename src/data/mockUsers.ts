@@ -8,6 +8,7 @@ import { AuthUser, UserRole, PermissionKey, RolePermissionConfig } from '../type
 export const SYSTEM_USERS: AuthUser[] = [
   {
     id: 'user_principal',
+    uuid: 'usr-9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d',
     name: 'Dr. Anthony K. Macharia',
     role: 'principal',
     title: 'Chief Principal & Accounting Officer',
@@ -18,6 +19,7 @@ export const SYSTEM_USERS: AuthUser[] = [
   },
   {
     id: 'user_bursar',
+    uuid: 'usr-f47ac10b-58cc-4372-a567-0e02b2c3d479',
     name: 'Mdm. Florence Ndinda',
     role: 'bursar',
     title: 'Head of Accounts & School Bursar',
@@ -28,6 +30,7 @@ export const SYSTEM_USERS: AuthUser[] = [
   },
   {
     id: 'user_class_master',
+    uuid: 'usr-6ba7b810-9dad-11d1-80b4-00c04fd430c8',
     name: 'Mr. Patrick Wanjala',
     role: 'class_master',
     title: 'Class Master (Grade 7 Amboseli) & Senior Teacher',
@@ -41,6 +44,7 @@ export const SYSTEM_USERS: AuthUser[] = [
   },
   {
     id: 'user_teacher',
+    uuid: 'usr-7c9e6679-7425-40de-944b-e07fc1f90ae7',
     name: 'Eng. Kennedy Mutua',
     role: 'teacher',
     title: 'Subject Teacher (Pre-Technical & Math)',
@@ -52,6 +56,7 @@ export const SYSTEM_USERS: AuthUser[] = [
   },
   {
     id: 'user_parent',
+    uuid: 'usr-550e8400-e29b-41d4-a716-446655440000',
     name: 'Grace Auma',
     role: 'parent',
     title: 'Parent / Guardian of Brian Omondi',
@@ -63,6 +68,7 @@ export const SYSTEM_USERS: AuthUser[] = [
   },
   {
     id: 'user_moe_director',
+    uuid: 'usr-c39f1e1a-82dc-4682-bb3a-18b0c8f1e8a2',
     name: 'Dr. Belio Kipsang / Beatrice Lukalo',
     role: 'moe_director',
     title: 'County Director of Education (CDE) - Kiambu & National Inspector',
@@ -408,8 +414,14 @@ export function hasPermission(role: UserRole, permission: PermissionKey): boolea
 }
 
 export function isTabAccessible(role: UserRole, tabId: string): boolean {
+  if (tabId === 'moe-oversight') {
+    return role === 'moe_director';
+  }
   if (role === 'moe_director') {
     return tabId === 'moe-oversight';
+  }
+  if (tabId === 'user-management') {
+    return role === 'principal';
   }
   if (role === 'principal') return true;
   if (role === 'parent') {

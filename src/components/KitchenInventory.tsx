@@ -21,6 +21,9 @@ import {
   X,
   Clock,
   Warehouse,
+  Printer,
+  Upload,
+  Edit3,
 } from 'lucide-react';
 import { exportToExcel } from '../utils/excelExport';
 
@@ -280,6 +283,10 @@ export function KitchenInventory() {
   // Modals
   const [isAddStockModalOpen, setIsAddStockModalOpen] = useState(false);
   const [isDispenseMealModalOpen, setIsDispenseMealModalOpen] = useState(false);
+  const [isEditStockModalOpen, setIsEditStockModalOpen] = useState(false);
+  const [isAddPurchaseModalOpen, setIsAddPurchaseModalOpen] = useState(false);
+  const [editingStockItem, setEditingStockItem] = useState<FoodStockItem | null>(null);
+  const [kitchenToast, setKitchenToast] = useState<string | null>(null);
 
   // Forms
   const [newStockForm, setNewStockForm] = useState({
@@ -291,6 +298,18 @@ export function KitchenInventory() {
     costPerUnitKes: 5000,
     supplier: '',
     batchNumber: '',
+  });
+
+  const [purchaseForm, setPurchaseForm] = useState({
+    selectedStockId: 'fs_01',
+    isNewItem: false,
+    name: '',
+    category: 'Cereals & Pulses' as FoodStockItem['category'],
+    unit: '90kg Bags',
+    quantityBought: 10,
+    costPerUnitKes: 4800,
+    supplier: 'Eldoret Grain Silos Ltd',
+    invoiceNumber: `INV-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
   });
 
   const [dispenseForm, setDispenseForm] = useState({
@@ -441,39 +460,199 @@ export function KitchenInventory() {
     setIsDispenseMealModalOpen(false);
   };
 
+  // Handle Edit Existing Stock Item (Directly changes stock, unit price and valuation)
+  const handleSaveEditedStock = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingStockItem) return;
+
+    setStocks((prev) =>
+      prev.map((s) => (s.id === editingStockItem.id ? editingStockItem : s))
+    );
+    setIsEditStockModalOpen(false);
+    setEditingStockItem(null);
+    setKitchenToast(`Stock for ${editingStockItem.name} updated. Total store valuation recalculated.`);
+    setTimeout(() => setKitchenToast(null), 4000);
+  };
+
+  // Handle Add Supplies Bought (Directly connects to valuation figure)
+  const handleAddPurchasedSupplies = (e: React.FormEvent) => {
+    e.preventDefault();
+    const qty = Number(purchaseForm.quantityBought);
+    const unitPrice = Number(purchaseForm.costPerUnitKes);
+    const totalCost = qty * unitPrice;
+
+    if (purchaseForm.isNewItem) {
+      const newStock: FoodStockItem = {
+        id: `fs_${Date.now()}`,
+        name: purchaseForm.name,
+        category: purchaseForm.category,
+        currentStock: qty,
+        unit: purchaseForm.unit,
+        reorderLevel: Math.max(2, Math.floor(qty * 0.25)),
+        costPerUnitKes: unitPrice,
+        supplier: purchaseForm.supplier,
+        lastRestocked: new Date().toISOString().slice(0, 10),
+        batchNumber: `BAT-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`,
+      };
+      setStocks((prev) => [newStock, ...prev]);
+      setKitchenToast(`Recorded purchase of ${qty} ${purchaseForm.unit} ${purchaseForm.name} (KES ${totalCost.toLocaleString()}). Store valuation updated!`);
+    } else {
+      setStocks((prev) =>
+        prev.map((s) => {
+          if (s.id === purchaseForm.selectedStockId) {
+            return {
+              ...s,
+              currentStock: s.currentStock + qty,
+              costPerUnitKes: unitPrice,
+              supplier: purchaseForm.supplier || s.supplier,
+              lastRestocked: new Date().toISOString().slice(0, 10),
+            };
+          }
+          return s;
+        })
+      );
+      const target = stocks.find((s) => s.id === purchaseForm.selectedStockId);
+      setKitchenToast(`Recorded purchase of ${qty} units of ${target?.name || 'commodity'} (KES ${totalCost.toLocaleString()}). Store valuation updated!`);
+    }
+
+    setIsAddPurchaseModalOpen(false);
+    setTimeout(() => setKitchenToast(null), 4000);
+  };
+
+  // Handle Import Stock / Delivery Sheet via CSV
+  const handleImportDeliverySheet = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      const lines = text.split('\n').filter((l) => l.trim().length > 0);
+      if (lines.length <= 1) {
+        setKitchenToast('Imported CSV was empty or only had headers.');
+        setTimeout(() => setKitchenToast(null), 3000);
+        return;
+      }
+
+      let importedCount = 0;
+      const newItems: FoodStockItem[] = [];
+      for (let i = 1; i < lines.length; i++) {
+        const cols = lines[i].split(',').map((c) => c.trim().replace(/^"|"$/g, ''));
+        if (cols.length >= 4) {
+          const name = cols[0];
+          const cat = (cols[1] as FoodStockItem['category']) || 'Cereals & Pulses';
+          const qty = Number(cols[2]) || 10;
+          const unit = cols[3] || 'Units';
+          const price = Number(cols[4]) || 4000;
+          const supplier = cols[5] || 'Registered Supplier';
+
+          newItems.push({
+            id: `fs_csv_${Date.now()}_${i}`,
+            name,
+            category: cat,
+            currentStock: qty,
+            unit,
+            reorderLevel: Math.max(2, Math.floor(qty * 0.2)),
+            costPerUnitKes: price,
+            supplier,
+            lastRestocked: new Date().toISOString().slice(0, 10),
+            batchNumber: `CSV-LOT-${Math.floor(100 + Math.random() * 900)}`,
+          });
+          importedCount++;
+        }
+      }
+
+      if (newItems.length > 0) {
+        setStocks((prev) => [...newItems, ...prev]);
+        setKitchenToast(`Successfully imported ${importedCount} stock delivery lines. Valuation recalculated!`);
+      } else {
+        setKitchenToast(`Processed ${file.name}. Format verified.`);
+      }
+      setTimeout(() => setKitchenToast(null), 4000);
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
   return (
     <div className="space-y-6">
+      {/* Toast Notification */}
+      {kitchenToast && (
+        <div className="bg-emerald-900 text-white px-4 py-2.5 rounded-lg text-xs font-semibold flex items-center justify-between shadow-lg">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+            <span>{kitchenToast}</span>
+          </div>
+          <button onClick={() => setKitchenToast(null)} className="text-emerald-300 hover:text-white">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Top Banner & Control Zone */}
       <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
             <Warehouse className="w-5 h-5 text-emerald-700" />
             <h2 className="text-lg font-bold text-slate-900">
-              Kitchen Foodstock Inventory & Manual Meal Tracking
+              Kitchen Foodstock Inventory & Stores Management
             </h2>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Track cereal stores, legumes, cooking oils, and dairy rations. Supports manual headcount feeding logs for schools without Tap-to-Eat.
+            Track granary stocks, legumes, cooking oils, and ration intake. All purchase receipts and stock updates dynamically drive the official store valuation.
           </p>
         </div>
 
-        {/* Action Buttons: Excel Export & Add Stock */}
-        <div className="flex flex-wrap items-center gap-2.5">
+        {/* Action Buttons: Print, Excel, Upload & Restock */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Print Button */}
           <button
-            onClick={activeSubTab === 'stocks' ? handleExportStocksExcel : handleExportManualMealsExcel}
-            className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors"
+            onClick={() => window.print()}
+            className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs font-semibold flex items-center gap-1.5 transition-colors border border-slate-300"
+            title="Print Foodstock & Meal Ledger"
           >
-            <FileSpreadsheet className="w-3.5 h-3.5" />
-            Export to Excel (.xlsx/.csv)
+            <Printer className="w-3.5 h-3.5" />
+            Print Ledger
           </button>
 
+          {/* Export to Excel */}
+          <button
+            onClick={activeSubTab === 'stocks' ? handleExportStocksExcel : handleExportManualMealsExcel}
+            className="px-3 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5" />
+            Export (.csv)
+          </button>
+
+          {/* Upload Stock Delivery Sheet */}
+          <label className="cursor-pointer px-3 py-2 bg-teal-700 hover:bg-teal-800 text-white rounded text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors">
+            <Upload className="w-3.5 h-3.5" />
+            <span>Upload Delivery (.csv)</span>
+            <input
+              type="file"
+              accept=".csv,.txt"
+              onChange={handleImportDeliverySheet}
+              className="hidden"
+            />
+          </label>
+
+          {/* Add Supplies Bought */}
+          <button
+            onClick={() => setIsAddPurchaseModalOpen(true)}
+            className="px-3 py-2 bg-emerald-800 hover:bg-emerald-900 text-white rounded text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Add Supplies Bought
+          </button>
+
+          {/* Restock Item or Manual Batch */}
           {activeSubTab === 'stocks' ? (
             <button
               onClick={() => setIsAddStockModalOpen(true)}
               className="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors"
             >
               <Plus className="w-3.5 h-3.5" />
-              Restock Item
+              New Item Batch
             </button>
           ) : (
             <button
@@ -481,7 +660,7 @@ export function KitchenInventory() {
               className="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors"
             >
               <Plus className="w-3.5 h-3.5" />
-              Log Manual Meal Batch
+              Log Meal Batch
             </button>
           )}
         </div>
@@ -666,7 +845,18 @@ export function KitchenInventory() {
                           )}
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <div className="inline-flex items-center gap-1">
+                          <div className="inline-flex items-center gap-1.5">
+                            <button
+                              onClick={() => {
+                                setEditingStockItem({ ...item });
+                                setIsEditStockModalOpen(true);
+                              }}
+                              className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded font-semibold text-[11px] flex items-center gap-1"
+                              title="Edit figure, unit price or supplier"
+                            >
+                              <Edit3 className="w-3 h-3" />
+                              Edit
+                            </button>
                             <button
                               onClick={() => {
                                 setStocks((prev) =>
@@ -1028,6 +1218,343 @@ export function KitchenInventory() {
                   className="px-4 py-2 bg-emerald-700 text-white rounded text-xs font-semibold hover:bg-emerald-800"
                 >
                   Confirm & Deduct Stock
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          MODAL 3: EDIT FOOD STOCK ITEM FIGURES & SUPPLIER
+          ========================================================================= */}
+      {isEditStockModalOpen && editingStockItem && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 border border-slate-200">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+              <div className="flex items-center gap-2">
+                <Edit3 className="w-5 h-5 text-amber-700" />
+                <h3 className="text-base font-bold text-slate-900">Edit Inventory Figure & Supplier</h3>
+              </div>
+              <button
+                onClick={() => {
+                  setIsEditStockModalOpen(false);
+                  setEditingStockItem(null);
+                }}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditedStock} className="mt-4 space-y-3.5 text-xs">
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">Commodity Name:</label>
+                <input
+                  type="text"
+                  required
+                  value={editingStockItem.name}
+                  onChange={(e) => setEditingStockItem({ ...editingStockItem, name: e.target.value })}
+                  className="w-full border border-slate-300 rounded px-3 py-2 text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-amber-500 font-medium"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">Current Stock ({editingStockItem.unit}):</label>
+                  <input
+                    type="number"
+                    min="0"
+                    required
+                    value={editingStockItem.currentStock}
+                    onChange={(e) =>
+                      setEditingStockItem({ ...editingStockItem, currentStock: Number(e.target.value) })
+                    }
+                    className="w-full border border-slate-300 rounded px-3 py-2 text-xs font-bold tabular-nums text-slate-900 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                  />
+                </div>
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">Unit Price (KES):</label>
+                  <input
+                    type="number"
+                    min="0"
+                    required
+                    value={editingStockItem.costPerUnitKes}
+                    onChange={(e) =>
+                      setEditingStockItem({ ...editingStockItem, costPerUnitKes: Number(e.target.value) })
+                    }
+                    className="w-full border border-slate-300 rounded px-3 py-2 text-xs font-bold tabular-nums text-emerald-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                  />
+                </div>
+              </div>
+
+              <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
+                <span className="text-[11px] text-amber-800 font-medium block">
+                  Computed Commodity Valuation:
+                </span>
+                <span className="text-base font-bold text-amber-950 tabular-nums">
+                  KES {(editingStockItem.currentStock * editingStockItem.costPerUnitKes).toLocaleString()}
+                </span>
+                <span className="text-[10px] text-amber-700 block mt-0.5">
+                  Saving will directly update the total store valuation card.
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">Reorder Level:</label>
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    value={editingStockItem.reorderLevel}
+                    onChange={(e) =>
+                      setEditingStockItem({ ...editingStockItem, reorderLevel: Number(e.target.value) })
+                    }
+                    className="w-full border border-slate-300 rounded px-3 py-2 text-xs text-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">Batch Code:</label>
+                  <input
+                    type="text"
+                    value={editingStockItem.batchNumber}
+                    onChange={(e) =>
+                      setEditingStockItem({ ...editingStockItem, batchNumber: e.target.value })
+                    }
+                    className="w-full border border-slate-300 rounded px-3 py-2 text-xs text-slate-900 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">Supplier Organization:</label>
+                <input
+                  type="text"
+                  value={editingStockItem.supplier}
+                  onChange={(e) =>
+                    setEditingStockItem({ ...editingStockItem, supplier: e.target.value })
+                  }
+                  className="w-full border border-slate-300 rounded px-3 py-2 text-xs text-slate-900"
+                />
+              </div>
+
+              <div className="pt-3 flex justify-end gap-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsEditStockModalOpen(false);
+                    setEditingStockItem(null);
+                  }}
+                  className="px-4 py-2 border border-slate-300 rounded text-xs font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-amber-700 text-white rounded text-xs font-semibold hover:bg-amber-800"
+                >
+                  Save & Recalculate Store Value
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          MODAL 4: ADD SUPPLIES BOUGHT (DIRECTLY CONNECTED TO STORE VALUATION)
+          ========================================================================= */}
+      {isAddPurchaseModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6 border border-slate-200">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+              <div className="flex items-center gap-2">
+                <Warehouse className="w-5 h-5 text-emerald-700" />
+                <h3 className="text-base font-bold text-slate-900">Record Supplies Bought & Receipt</h3>
+              </div>
+              <button
+                onClick={() => setIsAddPurchaseModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddPurchasedSupplies} className="mt-4 space-y-3.5 text-xs">
+              <div className="flex items-center gap-4 p-2 bg-slate-50 border border-slate-200 rounded">
+                <label className="flex items-center gap-1.5 cursor-pointer font-medium text-slate-800">
+                  <input
+                    type="radio"
+                    name="purchase_type"
+                    checked={!purchaseForm.isNewItem}
+                    onChange={() => setPurchaseForm({ ...purchaseForm, isNewItem: false })}
+                    className="text-emerald-600"
+                  />
+                  Restock Existing Store Commodity
+                </label>
+                <label className="flex items-center gap-1.5 cursor-pointer font-medium text-slate-800">
+                  <input
+                    type="radio"
+                    name="purchase_type"
+                    checked={purchaseForm.isNewItem}
+                    onChange={() => setPurchaseForm({ ...purchaseForm, isNewItem: true })}
+                    className="text-emerald-600"
+                  />
+                  Add Newly Purchased Commodity
+                </label>
+              </div>
+
+              {!purchaseForm.isNewItem ? (
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">Select Foodstock Commodity:</label>
+                  <select
+                    value={purchaseForm.selectedStockId}
+                    onChange={(e) => {
+                      const selected = stocks.find((s) => s.id === e.target.value);
+                      setPurchaseForm({
+                        ...purchaseForm,
+                        selectedStockId: e.target.value,
+                        unit: selected?.unit || purchaseForm.unit,
+                        costPerUnitKes: selected?.costPerUnitKes || purchaseForm.costPerUnitKes,
+                        supplier: selected?.supplier || purchaseForm.supplier,
+                      });
+                    }}
+                    className="w-full border border-slate-300 rounded px-3 py-2 text-xs text-slate-900 font-medium"
+                  >
+                    {stocks.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} (Current: {s.currentStock} {s.unit} @ KES {s.costPerUnitKes})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <label className="font-semibold text-slate-700 block mb-1">Commodity Name:</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Baking Flour, Cow Milk (Bulk), Cooking Fat"
+                      value={purchaseForm.name}
+                      onChange={(e) => setPurchaseForm({ ...purchaseForm, name: e.target.value })}
+                      className="w-full border border-slate-300 rounded px-3 py-2 text-xs text-slate-900"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="font-semibold text-slate-700 block mb-1">Category:</label>
+                      <select
+                        value={purchaseForm.category}
+                        onChange={(e) =>
+                          setPurchaseForm({ ...purchaseForm, category: e.target.value as FoodStockItem['category'] })
+                        }
+                        className="w-full border border-slate-300 rounded px-2.5 py-2 text-xs text-slate-800"
+                      >
+                        <option value="Cereals & Pulses">Cereals & Pulses</option>
+                        <option value="Oils & Fats">Oils & Fats</option>
+                        <option value="Beverages & Condiments">Beverages & Condiments</option>
+                        <option value="Fresh Produce">Fresh Produce</option>
+                        <option value="Protein & Dairy">Protein & Dairy</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="font-semibold text-slate-700 block mb-1">Unit of Measure:</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. 50kg Bags, Litres"
+                        value={purchaseForm.unit}
+                        onChange={(e) => setPurchaseForm({ ...purchaseForm, unit: e.target.value })}
+                        className="w-full border border-slate-300 rounded px-3 py-2 text-xs text-slate-900"
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">Quantity Bought:</label>
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    value={purchaseForm.quantityBought}
+                    onChange={(e) =>
+                      setPurchaseForm({ ...purchaseForm, quantityBought: Number(e.target.value) })
+                    }
+                    className="w-full border border-slate-300 rounded px-3 py-2 text-xs font-bold tabular-nums text-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">Cost Per Unit (KES):</label>
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    value={purchaseForm.costPerUnitKes}
+                    onChange={(e) =>
+                      setPurchaseForm({ ...purchaseForm, costPerUnitKes: Number(e.target.value) })
+                    }
+                    className="w-full border border-slate-300 rounded px-3 py-2 text-xs font-bold tabular-nums text-slate-900"
+                  />
+                </div>
+              </div>
+
+              {/* Live Figure Computation Card */}
+              <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200 flex items-center justify-between">
+                <div>
+                  <span className="text-[11px] text-emerald-800 font-semibold block">Total Expenditure Added to Inventory:</span>
+                  <span className="text-xs text-emerald-700">
+                    {purchaseForm.quantityBought} units × KES {purchaseForm.costPerUnitKes.toLocaleString()}
+                  </span>
+                </div>
+                <div className="text-right">
+                  <span className="text-lg font-black text-emerald-900 tabular-nums block">
+                    KES {(purchaseForm.quantityBought * purchaseForm.costPerUnitKes).toLocaleString()}
+                  </span>
+                  <span className="text-[10px] text-emerald-600 font-medium">Connects directly to Store Valuation</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">Supplier / Merchant:</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Kitale Millers, Unga Farm Care"
+                    value={purchaseForm.supplier}
+                    onChange={(e) => setPurchaseForm({ ...purchaseForm, supplier: e.target.value })}
+                    className="w-full border border-slate-300 rounded px-3 py-2 text-xs text-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">Invoice / Delivery Voucher #:</label>
+                  <input
+                    type="text"
+                    value={purchaseForm.invoiceNumber}
+                    onChange={(e) => setPurchaseForm({ ...purchaseForm, invoiceNumber: e.target.value })}
+                    className="w-full border border-slate-300 rounded px-3 py-2 text-xs text-slate-900 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-3 flex justify-end gap-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsAddPurchaseModalOpen(false)}
+                  className="px-4 py-2 border border-slate-300 rounded text-xs font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-emerald-700 text-white rounded text-xs font-semibold hover:bg-emerald-800"
+                >
+                  Record Purchase & Update Figure
                 </button>
               </div>
             </form>

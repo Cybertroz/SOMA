@@ -13,6 +13,7 @@ import {
   Users,
   CheckCircle2,
   PieChart,
+  Printer,
 } from 'lucide-react';
 import { Learner, GradeLevel } from '../types/school';
 import { ALL_GRADES, ALL_LEARNING_AREAS } from '../data/mockSchoolData';
@@ -103,7 +104,7 @@ export function ExamAndGradeAnalytics({ students }: Props) {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <select
             value={selectedGrade}
             onChange={(e) => setSelectedGrade(e.target.value as any)}
@@ -116,6 +117,15 @@ export function ExamAndGradeAnalytics({ students }: Props) {
               </option>
             ))}
           </select>
+
+          <button
+            onClick={() => window.print()}
+            className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors border border-slate-300"
+            title="Print KNEC Exam Analytics Report"
+          >
+            <Printer className="w-3.5 h-3.5 text-slate-600" />
+            <span>Print Report</span>
+          </button>
 
           <button
             onClick={handleExportAnalyticsExcel}

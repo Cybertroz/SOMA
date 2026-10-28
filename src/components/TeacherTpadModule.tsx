@@ -22,6 +22,7 @@ import {
   Calendar,
   X,
   UserCheck,
+  FileSpreadsheet,
 } from 'lucide-react';
 import {
   TeacherStaffRecord,
@@ -31,6 +32,7 @@ import {
   CBCLevel,
 } from '../types/school';
 import { ALL_LEARNING_AREAS } from '../data/mockSchoolData';
+import { exportToExcel } from '../utils/excelExport';
 
 interface Props {
   currentUser: AuthUser;
@@ -230,6 +232,27 @@ export function TeacherTpadModule({
     setEvaluatorNotesInput('');
   };
 
+  const handleExportTpadExcel = () => {
+    exportToExcel(
+      'Limuru_Model_TSC_TPAD_Faculty_Appraisal_Report',
+      filteredTeachers,
+      [
+        { header: 'Teacher Name', key: 'name' },
+        { header: 'TSC Number', key: 'tscOrIdNo' },
+        { header: 'Cadre', key: 'cadre' },
+        { header: 'Role', key: 'role' },
+        { header: 'Assigned Stream', key: (t) => t.assignedStream || 'General' },
+        { header: 'Composite TPAD Score (/5.0)', key: (t) => t.metrics.tpadScore },
+        { header: 'Rating Band', key: (t) => t.metrics.ratingCategory },
+        { header: 'Syllabus Coverage (%)', key: (t) => `${t.metrics.syllabusCoverage}%` },
+        { header: 'Formative Assessments Logged', key: (t) => t.metrics.totalAssessments },
+        { header: 'Students Average Score (%)', key: (t) => `${t.metrics.studentAverageScore}%` },
+        { header: 'Learners Evaluated', key: (t) => t.metrics.evaluatedStudentsCount },
+        { header: 'Appraisal Validated', key: (t) => t.appraisal.signed ? 'YES (Signed)' : 'PENDING' },
+      ]
+    );
+  };
+
   return (
     <div className="space-y-6">
       {/* Institutional Top Header */}
@@ -339,6 +362,26 @@ export function TeacherTpadModule({
         </div>
 
         <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+          {/* Print Button */}
+          <button
+            onClick={() => window.print()}
+            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-xs font-bold shadow-xs transition-colors flex items-center gap-1.5 border border-slate-300"
+            title="Print TPAD Appraisal Dossiers"
+          >
+            <Printer className="w-3.5 h-3.5 text-slate-600" />
+            <span>Print Dossier</span>
+          </button>
+
+          {/* Export to Excel */}
+          <button
+            onClick={handleExportTpadExcel}
+            className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 rounded-lg text-xs font-bold shadow-xs transition-colors flex items-center gap-1.5 border border-emerald-300"
+            title="Export TPAD appraisals to Excel / CSV"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
+            <span>Export Excel</span>
+          </button>
+
           <div className="flex items-center gap-1.5 text-xs">
             <span className="text-slate-500 font-medium">Cadre:</span>
             <select

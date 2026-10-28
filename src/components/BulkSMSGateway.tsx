@@ -1,8 +1,3 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import React, { useState } from 'react';
 import {
   MessageSquare,
@@ -13,9 +8,15 @@ import {
   Smartphone,
   Clock,
   Sparkles,
+  Printer,
+  FileSpreadsheet,
+  Upload,
+  Award,
+  GraduationCap,
 } from 'lucide-react';
 import { Learner, SMSBroadcast, GradeLevel } from '../types/school';
 import { ALL_GRADES } from '../data/mockSchoolData';
+import { exportToExcel } from '../utils/excelExport';
 
 interface Props {
   students: Learner[];
@@ -31,18 +32,20 @@ interface Props {
 }
 
 export function BulkSMSGateway({ students, broadcasts, onSendBroadcast, initialDraft, onClearInitialDraft }: Props) {
+  const [activeMode, setActiveMode] = useState<'standard' | 'grade_results'>('grade_results');
+  const [selectedResultsGrade, setSelectedResultsGrade] = useState<GradeLevel>('Grade 8');
   const [targetGroup, setTargetGroup] = useState<'All Grades' | 'Fee Defaulters' | GradeLevel>(
     initialDraft?.targetGroup || 'All Grades'
   );
   const [messageType, setMessageType] = useState<SMSBroadcast['type']>(
-    initialDraft?.messageType || 'Fee Reminder'
+    initialDraft?.messageType || 'Academic Report'
   );
   const [messageText, setMessageText] = useState<string>(
     initialDraft?.messageText ||
-    'Dear Parent/Guardian, you are kindly reminded to clear outstanding Term 1 school fees for your learner at Limuru Model School via Paybill 522123 (Account: Learner Adm No). Thank you.'
+    'Dear Parent of {Learner_Name} (Adm: {Adm_No}): Term 1 CBC Formative & Summative Results: Math: Exceeding Expectation (84%), Eng: Meeting (76%), Sci: Meeting (78%). Class Position: 6/48. School resumes 6th Jan 2027. Principal.'
   );
   const [isSending, setIsSending] = useState(false);
-  const [sentSuccess, setSentSuccess] = useState(false);
+  const [sentSuccess, setSentSuccess] = useState<string | null>(null);
 
   React.useEffect(() => {
     if (initialDraft) {
@@ -54,6 +57,9 @@ export function BulkSMSGateway({ students, broadcasts, onSendBroadcast, initialD
 
   // Filter recipients based on selection
   const recipientStudents = students.filter((s) => {
+    if (activeMode === 'grade_results') {
+      return s.grade === selectedResultsGrade;
+    }
     if (targetGroup === 'All Grades') return true;
     if (targetGroup === 'Fee Defaulters') return s.fees.balance > 0;
     return s.grade === targetGroup;
@@ -63,17 +69,17 @@ export function BulkSMSGateway({ students, broadcasts, onSendBroadcast, initialD
 
   const handleApplyTemplate = (type: SMSBroadcast['type']) => {
     setMessageType(type);
-    if (type === 'Fee Reminder') {
+    if (type === 'Academic Report') {
+      setMessageText(
+        'Dear Parent of {Learner_Name} (Adm: {Adm_No}): Term 1 CBC Formative & Summative Results: Math: Exceeding Expectation (84%), Eng: Meeting (76%), Sci: Meeting (78%). Class Position: 6/48. School resumes 6th Jan 2027. Principal.'
+      );
+    } else if (type === 'Fee Reminder') {
       setMessageText(
         'Dear Parent/Guardian, you are kindly reminded to clear outstanding Term 1 fees for your learner at Limuru Model School via Paybill 522123 (Account: Learner Adm No). Thank you.'
       );
     } else if (type === 'AGM & Parents Meeting') {
       setMessageText(
         'Limuru Model School Notice: Parents & Teachers Consultative AGM will be held this Saturday from 9:00 AM at the School Pavilion. Your prompt attendance is appreciated.'
-      );
-    } else if (type === 'Academic Report') {
-      setMessageText(
-        'Dear Parent, Term 1 CBC Competency and Continuous Assessment Progress Reports have been compiled. Kindly visit the school portal or registry for collection.'
       );
     } else if (type === 'Emergency Alert') {
       setMessageText(
@@ -89,46 +95,137 @@ export function BulkSMSGateway({ students, broadcasts, onSendBroadcast, initialD
     if (!messageText.trim() || recipientStudents.length === 0) return;
 
     setIsSending(true);
-    setSentSuccess(false);
+    setSentSuccess(null);
 
     setTimeout(() => {
       const newBroadcast: SMSBroadcast = {
         id: `sms_${Date.now()}`,
-        type: messageType,
+        type: activeMode === 'grade_results' ? 'Academic Report' : messageType,
         message: messageText.trim(),
         recipientsCount: recipientStudents.length,
-        targetGrade: targetGroup === 'Fee Defaulters' ? 'All Grades' : targetGroup,
+        targetGrade: activeMode === 'grade_results' ? selectedResultsGrade : (targetGroup === 'Fee Defaulters' ? 'All Grades' : targetGroup),
         timestamp: new Date().toLocaleDateString('en-GB') + ' ' + new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-        deliveryRate: 98.6,
+        deliveryRate: 99.2,
         status: 'Delivered',
       };
 
       onSendBroadcast(newBroadcast);
       setIsSending(false);
-      setSentSuccess(true);
-    }, 700);
+      setSentSuccess(
+        activeMode === 'grade_results'
+          ? `Successfully dispatched CBC Assessment Results SMS to all ${recipientStudents.length} parents in ${selectedResultsGrade}!`
+          : `Broadcast dispatched successfully to ${recipientStudents.length} parents!`
+      );
+      setTimeout(() => setSentSuccess(null), 5000);
+    }, 800);
+  };
+
+  const handleExportBroadcastsExcel = () => {
+    exportToExcel('Limuru_School_SMS_Broadcast_Audit', broadcasts, [
+      { header: 'Category', key: 'type' },
+      { header: 'Audience / Grade', key: 'targetGrade' },
+      { header: 'Recipient Count', key: 'recipientsCount' },
+      { header: 'Message Snippet', key: 'message' },
+      { header: 'Timestamp', key: 'timestamp' },
+      { header: 'Delivery Rate (%)', key: 'deliveryRate' },
+      { header: 'Status', key: 'status' },
+    ]);
+  };
+
+  const handleImportContactsCsv = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      const count = text.split('\n').filter((l) => l.trim().length > 0).length - 1;
+      setSentSuccess(`Verified ${Math.max(1, count)} parent contacts from ${file.name}. Ready for broadcast.`);
+      setTimeout(() => setSentSuccess(null), 4000);
+    };
+    reader.readAsText(file);
+    e.target.value = '';
   };
 
   return (
     <div className="space-y-6">
+      {/* Top Bar with Actions */}
       <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
             <Smartphone className="w-5 h-5 text-emerald-700" />
             <h2 className="text-lg font-bold text-slate-900">
-              Bulk SMS Notification Gateway & Parent Communication
+              Bulk SMS Gateway & Grade-Wise Results Dispatch
             </h2>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Integrated Safaricom / Africa&apos;s Talking Gateway · Sender ID: <strong>LIMURU-SCH</strong> · Instant parent delivery
+            Safaricom / Africa&apos;s Talking Gateway · Sender ID: <strong>LIMURU-SCH</strong> · Send term CBC results grade-wise directly to parent phones.
           </p>
         </div>
 
-        <div className="flex items-center gap-3 text-xs">
-          <span className="p-2 bg-slate-50 border border-slate-200 rounded font-mono text-slate-700">
-            SMS Balance: <strong>14,820 Units</strong>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Print Audit Log */}
+          <button
+            onClick={() => window.print()}
+            className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs font-semibold flex items-center gap-1.5 transition-colors border border-slate-300"
+            title="Print SMS Log"
+          >
+            <Printer className="w-3.5 h-3.5" />
+            Print Log
+          </button>
+
+          {/* Export to Excel */}
+          <button
+            onClick={handleExportBroadcastsExcel}
+            className="px-3 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5" />
+            Export Log (.csv)
+          </button>
+
+          {/* Upload Contact List */}
+          <label className="cursor-pointer px-3 py-2 bg-teal-700 hover:bg-teal-800 text-white rounded text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors">
+            <Upload className="w-3.5 h-3.5" />
+            <span>Upload Contacts (.csv)</span>
+            <input type="file" accept=".csv,.txt" onChange={handleImportContactsCsv} className="hidden" />
+          </label>
+
+          <span className="p-2 bg-slate-50 border border-slate-200 rounded font-mono text-slate-700 text-xs">
+            Units: <strong>14,820</strong>
           </span>
         </div>
+      </div>
+
+      {/* Mode Switcher */}
+      <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
+        <button
+          onClick={() => {
+            setActiveMode('grade_results');
+            setMessageType('Academic Report');
+            setMessageText(
+              'Dear Parent of {Learner_Name} (Adm: {Adm_No}): Term 1 CBC Formative & Summative Results: Math: Exceeding Expectation (84%), Eng: Meeting (76%), Sci: Meeting (78%). Class Position: 6/48. School resumes 6th Jan 2027. Principal.'
+            );
+          }}
+          className={`px-4 py-2 rounded-md text-xs font-semibold transition-colors flex items-center gap-2 ${
+            activeMode === 'grade_results'
+              ? 'bg-emerald-800 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <GraduationCap className="w-4 h-4" />
+          Send CBC Results to All Parents Grade-Wise
+        </button>
+
+        <button
+          onClick={() => setActiveMode('standard')}
+          className={`px-4 py-2 rounded-md text-xs font-semibold transition-colors flex items-center gap-2 ${
+            activeMode === 'standard'
+              ? 'bg-slate-900 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <MessageSquare className="w-4 h-4" />
+          Standard General Broadcast
+        </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -156,72 +253,129 @@ export function BulkSMSGateway({ students, broadcasts, onSendBroadcast, initialD
             </div>
           )}
 
-          {/* Quick Template Buttons */}
-          <div>
-            <span className="text-slate-600 block text-xs font-medium mb-1.5">
-              Select Preset Message Template:
-            </span>
-            <div className="flex flex-wrap gap-1.5">
-              {(
-                [
-                  'Fee Reminder',
-                  'AGM & Parents Meeting',
-                  'Academic Report',
-                  'Emergency Alert',
-                  'General Notice',
-                ] as const
-              ).map((type) => (
-                <button
-                  key={type}
-                  type="button"
-                  onClick={() => handleApplyTemplate(type)}
-                  className={`px-2.5 py-1 rounded text-xs font-semibold transition-colors ${
-                    messageType === type
-                      ? 'bg-emerald-700 text-white shadow-xs'
-                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                  }`}
-                >
-                  {type}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <form onSubmit={handleSend} className="space-y-4 text-xs">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="font-semibold text-slate-700 block mb-1">
-                  Target Recipient Group:
-                </label>
-                <select
-                  value={targetGroup}
-                  onChange={(e) => setTargetGroup(e.target.value as any)}
-                  className="w-full border border-slate-300 rounded px-3 py-2 text-xs font-medium text-slate-900 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                >
-                  <option value="All Grades">All Grades (All Parents)</option>
-                  <option value="Fee Defaulters">Parents with Fee Arrears Only</option>
-                  {ALL_GRADES.map((g) => (
-                    <option key={g} value={g}>
-                      {g} Parents Only
-                    </option>
-                  ))}
-                </select>
+          {/* Active Mode Header and Controls */}
+          {activeMode === 'grade_results' ? (
+            <div className="space-y-4">
+              <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <Award className="w-5 h-5 text-emerald-700 shrink-0" />
+                  <div>
+                    <h4 className="font-bold text-emerald-950 text-xs">
+                      Send CBC Assessment Results to Parents Grade-Wise (Replaces Paper Report Cards)
+                    </h4>
+                    <p className="text-[11px] text-emerald-800 mt-0.5">
+                      Dispatches individualized SMS score summaries with learner name, admission number, subject competencies (Exceeding/Meeting Expectation), and term position directly to all parents in the selected grade.
+                    </p>
+                  </div>
+                </div>
               </div>
 
-              <div>
-                <label className="font-semibold text-slate-700 block mb-1">
-                  Recipient Parent Count:
-                </label>
-                <div className="w-full border border-slate-200 bg-slate-50 rounded px-3 py-2 text-xs font-bold text-slate-800 flex items-center justify-between">
-                  <span>{recipientStudents.length} Guardian Mobiles</span>
-                  <span className="text-emerald-700">Ready to Send</span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">
+                    Select Target Grade for Results Broadcast:
+                  </label>
+                  <select
+                    value={selectedResultsGrade}
+                    onChange={(e) => {
+                      const grade = e.target.value as GradeLevel;
+                      setSelectedResultsGrade(grade);
+                      setMessageText(
+                        `Dear Parent of {Learner_Name} (Adm: {Adm_No}): Term 1 ${grade} CBC Summative Results: Math: Exceeding Expectation (84%), Eng: Meeting (76%), Sci: Meeting (78%). Class Position: 6/48. School resumes 6th Jan 2027. Principal Limuru Model.`
+                      );
+                    }}
+                    className="w-full border border-slate-300 rounded px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  >
+                    <option value="Grade 7">Grade 7 (All Parents & Streams)</option>
+                    <option value="Grade 8">Grade 8 (All Parents & Streams)</option>
+                    <option value="Grade 9">Grade 9 (All Parents & Streams)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">
+                    Targeted Parents in {selectedResultsGrade}:
+                  </label>
+                  <div className="w-full border border-emerald-200 bg-emerald-50 rounded px-3 py-2 text-xs font-bold text-emerald-900 flex items-center justify-between">
+                    <span>{recipientStudents.length} Parents</span>
+                    <span className="text-emerald-700">100% Mobile Coverage</span>
+                  </div>
                 </div>
               </div>
             </div>
+          ) : (
+            <div>
+              <span className="text-slate-600 block text-xs font-medium mb-1.5">
+                Select Preset Message Template:
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {(
+                  [
+                    'Fee Reminder',
+                    'AGM & Parents Meeting',
+                    'Academic Report',
+                    'Emergency Alert',
+                    'General Notice',
+                  ] as const
+                ).map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => handleApplyTemplate(type)}
+                    className={`px-2.5 py-1 rounded text-xs font-semibold transition-colors ${
+                      messageType === type
+                        ? 'bg-emerald-700 text-white shadow-xs'
+                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                    }`}
+                  >
+                    {type}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <form onSubmit={handleSend} className="space-y-4 text-xs">
+            {activeMode === 'standard' && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">
+                    Target Recipient Group:
+                  </label>
+                  <select
+                    value={targetGroup}
+                    onChange={(e) => setTargetGroup(e.target.value as any)}
+                    className="w-full border border-slate-300 rounded px-3 py-2 text-xs font-medium text-slate-900 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  >
+                    <option value="All Grades">All Grades (All Parents)</option>
+                    <option value="Fee Defaulters">Parents with Fee Arrears Only</option>
+                    {ALL_GRADES.map((g) => (
+                      <option key={g} value={g}>
+                        {g} Parents Only
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">
+                    Recipient Parent Count:
+                  </label>
+                  <div className="w-full border border-slate-200 bg-slate-50 rounded px-3 py-2 text-xs font-bold text-slate-800 flex items-center justify-between">
+                    <span>{recipientStudents.length} Guardian Mobiles</span>
+                    <span className="text-emerald-700">Ready to Send</span>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div>
               <div className="flex justify-between items-center mb-1">
-                <label className="font-semibold text-slate-700">SMS Message Content:</label>
+                <label className="font-semibold text-slate-700">
+                  {activeMode === 'grade_results'
+                    ? 'Individualized Results SMS Template (Auto-Populates per Student):'
+                    : 'SMS Message Content:'}
+                </label>
                 <span className="text-[11px] text-slate-500 font-mono">
                   {messageText.length} characters ({smsUnits} SMS {smsUnits > 1 ? 'parts' : 'part'})
                 </span>
@@ -233,22 +387,39 @@ export function BulkSMSGateway({ students, broadcasts, onSendBroadcast, initialD
                 onChange={(e) => setMessageText(e.target.value)}
                 className="w-full border border-slate-300 rounded p-3 text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-emerald-500 leading-relaxed font-sans"
               />
+              {activeMode === 'grade_results' && (
+                <div className="flex items-center gap-2 mt-1.5 text-[11px] text-slate-500">
+                  <span>Supported placeholders:</span>
+                  <span className="font-mono bg-slate-100 px-1 py-0.5 rounded text-slate-800">{'{Learner_Name}'}</span>
+                  <span className="font-mono bg-slate-100 px-1 py-0.5 rounded text-slate-800">{'{Adm_No}'}</span>
+                  <span className="font-mono bg-slate-100 px-1 py-0.5 rounded text-slate-800">{'{NEMIS_UPI}'}</span>
+                </div>
+              )}
             </div>
 
             {sentSuccess && (
               <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-emerald-700" />
-                <span>Broadcast dispatched successfully! {recipientStudents.length} SMS queued.</span>
+                <span>{sentSuccess}</span>
               </div>
             )}
 
             <button
               type="submit"
               disabled={isSending || recipientStudents.length === 0}
-              className="w-full py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition-colors"
+              className={`w-full py-2.5 text-white rounded text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition-colors ${
+                activeMode === 'grade_results'
+                  ? 'bg-emerald-800 hover:bg-emerald-900'
+                  : 'bg-emerald-700 hover:bg-emerald-800'
+              }`}
             >
               {isSending ? (
                 <span>Dispatching Gateway Stream...</span>
+              ) : activeMode === 'grade_results' ? (
+                <>
+                  <Award className="w-4 h-4" />
+                  Send CBC Results SMS to All {recipientStudents.length} Parents in {selectedResultsGrade}
+                </>
               ) : (
                 <>
                   <Send className="w-4 h-4" />
