@@ -78,15 +78,19 @@ export const isConfiguredWithRealFirebase = (): boolean => {
   );
 };
 
+import { getStorage, FirebaseStorage } from 'firebase/storage';
+
 // Primary Firebase App instance
 let app: FirebaseApp | null = null;
 let auth: Auth | null = null;
 let db: Firestore | null = null;
+let storage: FirebaseStorage | null = null;
 
 try {
   app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
   auth = getAuth(app);
   db = getFirestore(app);
+  storage = getStorage(app);
 } catch (err) {
   console.warn('Firebase initialization notice: Running in resilient demo/mock fallback mode until custom API keys are populated.', err);
 }
@@ -113,7 +117,7 @@ export const getSecondaryAuthInstance = (): Auth | null => {
   }
 };
 
-export { app, auth, db };
+export { app, auth, db, storage };
 
 // Friendly error code translation
 export const mapAuthErrorCodeToMessage = (errorCode: string): string => {

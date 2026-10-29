@@ -47,6 +47,7 @@ import {
   Zap,
   Check,
   LogOut,
+  Receipt,
 } from 'lucide-react';
 import { SchoolPlatformDashboard } from './components/SchoolPlatformDashboard';
 
@@ -138,6 +139,8 @@ import { PrintPreviewProvider, usePrintPreview } from './context/PrintPreviewCon
 import { PrintPreviewModal } from './components/PrintPreviewModal';
 import { LoginPage } from './components/LoginPage';
 import { UserManagementModule } from './components/UserManagementModule';
+import { FirebaseStatusBanner } from './components/FirebaseStatusBanner';
+import { FileUploadZone } from './components/FileUploadZone';
 import {
   KIAMBU_COUNTY_SCHOOLS,
   INITIAL_MOE_DISBURSEMENTS,
@@ -583,6 +586,12 @@ function SchoolApp() {
     targetStudentName?: string;
   } | null>(null);
 
+  // Bank Fee Payment Edit & Receipt Upload States
+  const [editingFeeLearner, setEditingFeeLearner] = useState<Learner | null>(null);
+  const [editFeePaidAmount, setEditFeePaidAmount] = useState<number>(0);
+  const [editFeeBankRef, setEditFeeBankRef] = useState<string>('');
+  const [editFeePaymentMethod, setEditFeePaymentMethod] = useState<string>('Bank Deposit Slip');
+
   // Filters & Selected records
   const [selectedStudentId, setSelectedStudentId] = useState<string>(learners[0]?.id || 'std_g7_01');
   const [admissionsGradeFilter, setAdmissionsGradeFilter] = useState<GradeLevel | 'All'>('All');
@@ -1020,6 +1029,43 @@ function SchoolApp() {
     if (soundEnabled) playSound('success');
   };
 
+  // Bank Fee Payment Edit & Direct Clearance Handshake
+  const handleSaveFeeEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingFeeLearner) return;
+
+    const newPaid = Number(editFeePaidAmount) || 0;
+    const newBal = Math.max(0, editingFeeLearner.fees.totalTermFee - newPaid);
+    const newStatus: 'Cleared' | 'Partial' | 'Defaulter' =
+      newBal === 0 ? 'Cleared' : newBal > editingFeeLearner.fees.totalTermFee * 0.4 ? 'Defaulter' : 'Partial';
+
+    setLearners((prev) =>
+      prev.map((s) => {
+        if (s.id !== editingFeeLearner.id) return s;
+        return {
+          ...s,
+          fees: {
+            ...s.fees,
+            paidAmount: newPaid,
+            balance: newBal,
+            status: newStatus,
+          },
+        };
+      })
+    );
+
+    handleLogAudit(
+      'FEE_LEDGER_EXPORT' as any,
+      `Fee Ledger Record: ${editingFeeLearner.name} (${editingFeeLearner.admissionNo})`,
+      `Accountant edited fees: Paid set to KES ${newPaid.toLocaleString()}, outstanding balance KES ${newBal.toLocaleString()}. Method: ${editFeePaymentMethod}, Slip Ref: ${editFeeBankRef || 'N/A'}.`,
+      'Restricted'
+    );
+
+    setToastNotification(`Fee payment record updated for ${editingFeeLearner.name}. New balance: KES ${newBal.toLocaleString()}`);
+    if (soundEnabled) playSound('success');
+    setEditingFeeLearner(null);
+  };
+
   // Add Discipline / Guidance Incident
   const handleAddDisciplineIncident = (studentId: string, incident: DisciplineIncident) => {
     setLearners((prev) =>
@@ -1053,8 +1099,29 @@ function SchoolApp() {
     if (soundEnabled) playSound('success');
   };
 
+  // User UUID & Role Scoping
+  // Class Masters / Teachers scoped to their assigned stream or grade
+  // Parents scoped strictly to their child (linkedLearnerId)
+  const scopedLearners = useMemo(() => {
+    if (currentUser.role === 'parent' && currentUser.linkedLearnerId) {
+      const match = learners.filter((s) => s.id === currentUser.linkedLearnerId);
+      return match.length > 0 ? match : learners.slice(0, 1);
+    }
+    if (currentUser.role === 'class_master' || currentUser.role === 'class_teacher') {
+      const teacherStream = currentUser.assignedStream?.toLowerCase();
+      const teacherGrade = currentUser.assignedGrade;
+      const matched = learners.filter((s) => {
+        if (teacherStream && s.stream.toLowerCase() === teacherStream) return true;
+        if (teacherGrade && s.grade === teacherGrade) return true;
+        return false;
+      });
+      return matched.length > 0 ? matched : learners;
+    }
+    return learners;
+  }, [learners, currentUser]);
+
   // Filtered Learners for Admissions Table
-  const filteredAdmissionsLearners = learners.filter((s) => {
+  const filteredAdmissionsLearners = scopedLearners.filter((s) => {
     if (admissionsGradeFilter !== 'All' && s.grade !== admissionsGradeFilter) return false;
     if (admissionsSearch) {
       const q = admissionsSearch.toLowerCase();
@@ -1069,7 +1136,7 @@ function SchoolApp() {
   });
 
   // Filtered Learners for CBC Table
-  const filteredCbcStudents = learners.filter((s) => {
+  const filteredCbcStudents = scopedLearners.filter((s) => {
     if (cbcGradeFilter !== 'All' && s.grade !== cbcGradeFilter) return false;
     return true;
   });
@@ -1148,6 +1215,9 @@ function SchoolApp() {
           </button>
         </div>
       )}
+
+      {/* Firebase & Storage Status Banner */}
+      <FirebaseStatusBanner />
 
       {/* =========================================================================
           TOP INSTITUTIONAL HEADER & BRANDING
@@ -1697,8 +1767,23 @@ function SchoolApp() {
                       <tr key={std.id} className="hover:bg-slate-50">
                         <td className="p-3 font-mono font-bold text-slate-900">{std.admissionNo}</td>
                         <td className="p-3 font-semibold text-slate-900">
-                          {std.name}
-                          <span className="block text-[11px] text-slate-500 font-normal">{std.gender} · DOB: {std.dob}</span>
+                          <div className="flex items-center gap-2.5">
+                            {std.photoUrl ? (
+                              <img
+                                src={std.photoUrl}
+                                alt={std.name}
+                                className="w-8 h-8 rounded-full object-cover border border-emerald-400/60 shrink-0 shadow-xs"
+                              />
+                            ) : (
+                              <div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 flex items-center justify-center font-bold text-xs shrink-0">
+                                {std.name.charAt(0)}
+                              </div>
+                            )}
+                            <div>
+                              <div className="font-bold text-slate-900">{std.name}</div>
+                              <span className="block text-[11px] text-slate-500 font-normal">{std.gender} · DOB: {std.dob}</span>
+                            </div>
+                          </div>
                         </td>
                         <td className="p-3 font-medium text-slate-700">{std.grade} ({std.stream})</td>
                         <td className="p-3 font-mono text-slate-600">{std.nemisUpi}</td>
@@ -2094,7 +2179,7 @@ function SchoolApp() {
                         <th className="p-3 text-right">Total Paid</th>
                         <th className="p-3 text-right">Outstanding Bal</th>
                         <th className="p-3 text-center">Status</th>
-                        <th className="p-3 text-right">SMS Reminder Action</th>
+                        <th className="p-3 text-right">Actions & Receipts</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -2137,23 +2222,39 @@ function SchoolApp() {
                               </span>
                             </td>
                             <td className="p-3 text-right">
-                              {hasArrears ? (
+                              <div className="flex items-center justify-end gap-1.5 flex-wrap">
                                 <button
                                   onClick={() => {
-                                    setSelectedFeeReminderLearner(s);
+                                    setEditingFeeLearner(s);
+                                    setEditFeePaidAmount(s.fees.paidAmount);
+                                    setEditFeePaymentMethod('Bank Deposit Slip');
+                                    setEditFeeBankRef('');
                                     if (soundEnabled) playSound('click');
                                   }}
-                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-lg text-xs font-bold shadow-2xs transition-colors shrink-0"
-                                  title={`Send fee arrears reminder SMS to ${s.guardianName} (${s.guardianPhone})`}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-xs font-semibold border border-slate-300 transition-colors shadow-2xs"
+                                  title={`Edit fee record or upload bank deposit slip for ${s.name}`}
                                 >
-                                  <Smartphone className="w-3.5 h-3.5 text-emerald-300" />
-                                  Send SMS Reminder
+                                  <Receipt className="w-3.5 h-3.5 text-teal-700" />
+                                  Edit / Bank Slip
                                 </button>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 text-[11px] text-emerald-700 font-semibold bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200">
-                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Cleared
-                                </span>
-                              )}
+                                {hasArrears ? (
+                                  <button
+                                    onClick={() => {
+                                      setSelectedFeeReminderLearner(s);
+                                      if (soundEnabled) playSound('click');
+                                    }}
+                                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-lg text-xs font-bold shadow-2xs transition-colors shrink-0"
+                                    title={`Send fee arrears reminder SMS to ${s.guardianName} (${s.guardianPhone})`}
+                                  >
+                                    <Smartphone className="w-3.5 h-3.5 text-emerald-300" />
+                                    SMS Reminder
+                                  </button>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 text-[11px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-1 rounded-md border border-emerald-200">
+                                    <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Cleared
+                                  </span>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         );
@@ -2610,6 +2711,7 @@ function SchoolApp() {
       onAddBulkLearners={handleAddBulkLearners}
       onClose={() => setIsAdmissionModalOpen(false)}
       existingCount={learners.length}
+      existingLearners={learners}
     />
   )}
 
@@ -2683,6 +2785,138 @@ function SchoolApp() {
       }}
       onLogAudit={handleLogAudit}
     />
+  )}
+
+  {/* Bank Fee Payment Edit & Slip Upload Modal */}
+  {editingFeeLearner && (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs animate-in fade-in duration-150 overflow-y-auto">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 my-8">
+        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3 mb-4">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-teal-100 dark:bg-teal-950/60 text-teal-700 dark:text-teal-400 flex items-center justify-center font-bold">
+              <Receipt className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                Bank Fee Payment Adjustment
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {editingFeeLearner.name} · Adm: {editingFeeLearner.admissionNo} · {editingFeeLearner.grade}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setEditingFeeLearner(null)}
+            className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-lg transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSaveFeeEdit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700/60 text-xs">
+            <div>
+              <span className="text-slate-500 block">Total Term Fee:</span>
+              <strong className="text-slate-900 dark:text-white font-mono text-sm">
+                KES {editingFeeLearner.fees.totalTermFee.toLocaleString()}
+              </strong>
+            </div>
+            <div>
+              <span className="text-slate-500 block">Bursary Applied:</span>
+              <strong className="text-sky-700 dark:text-sky-400 font-mono text-sm">
+                KES {editingFeeLearner.fees.bursaryApplied.toLocaleString()}
+              </strong>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              Adjust Total Paid Amount (KES)
+            </label>
+            <input
+              type="number"
+              min="0"
+              max={editingFeeLearner.fees.totalTermFee}
+              value={editFeePaidAmount}
+              onChange={(e) => setEditFeePaidAmount(Number(e.target.value))}
+              className="w-full px-3.5 py-2 text-sm font-mono font-bold rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-teal-500"
+              required
+            />
+            <p className="text-[11px] text-slate-500 mt-1">
+              Calculated Balance:{' '}
+              <strong className="font-mono text-rose-600">
+                KES {Math.max(0, editingFeeLearner.fees.totalTermFee - Number(editFeePaidAmount)).toLocaleString()}
+              </strong>
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                Payment Channel
+              </label>
+              <select
+                value={editFeePaymentMethod}
+                onChange={(e) => setEditFeePaymentMethod(e.target.value)}
+                className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+              >
+                <option value="Bank Deposit Slip">Bank Deposit Slip (KCB/Equity/Co-op)</option>
+                <option value="Bank EFT / RTGS">Bank EFT / RTGS Transfer</option>
+                <option value="Bankers Cheque">Bankers Cheque</option>
+                <option value="M-Pesa Direct Till">M-Pesa Direct Till / Paybill</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                Bank Reference / Slip No.
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. KCB-DEP-84920"
+                value={editFeeBankRef}
+                onChange={(e) => setEditFeeBankRef(e.target.value)}
+                className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+              />
+            </div>
+          </div>
+
+          {/* Upload Deposit Slip / Bank Receipt */}
+          <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+            <FileUploadZone
+              linkedRecordId={editingFeeLearner.id}
+              category="fee_receipt"
+              label="Attach Bank Deposit Slip / Bank Receipt"
+              helperText="Upload verified payment proof (PNG, JPG, PDF up to 5MB). Persisted securely."
+              expectedType="image_or_pdf"
+              onUploadSuccess={() => {
+                handleLogAudit(
+                  'FEE_LEDGER_EXPORT' as any,
+                  `Bank Slip: ${editingFeeLearner.name}`,
+                  `Attached verified bank slip for ${editingFeeLearner.admissionNo}`,
+                  'Restricted'
+                );
+              }}
+            />
+          </div>
+
+          <div className="pt-3 flex items-center justify-end gap-2.5">
+            <button
+              type="button"
+              onClick={() => setEditingFeeLearner(null)}
+              className="px-4 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-5 py-2 text-xs font-bold text-white bg-teal-700 hover:bg-teal-800 rounded-lg transition-colors shadow-sm"
+            >
+              Save Fee Record & Clear
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   )}
 
       {/* Universal Print Preview Modal for All Reports */}

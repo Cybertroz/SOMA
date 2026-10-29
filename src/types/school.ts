@@ -14,7 +14,17 @@ export type GradeLevel =
   | 'Grade 8'
   | 'Grade 9';
 
-export type UserRole = 'principal' | 'bursar' | 'class_master' | 'teacher' | 'parent' | 'moe_director';
+export type UserRole =
+  | 'principal'
+  | 'admin'
+  | 'accountant'
+  | 'bursar'
+  | 'nurse'
+  | 'class_master'
+  | 'class_teacher'
+  | 'teacher'
+  | 'parent'
+  | 'moe_director';
 
 export type PermissionKey =
   | 'view_dashboard'
@@ -62,6 +72,7 @@ export interface AuthUser {
   email: string;
   phone: string;
   avatarInitials: string;
+  photoUrl?: string;
   assignedGrade?: GradeLevel;
   assignedStream?: string;
   assignedSubjects?: string[];
@@ -113,6 +124,7 @@ export interface Learner {
   assessmentNo: string; // KNEC Assessment No
   birthCertNo: string;
   name: string;
+  photoUrl?: string;
   gender: 'Male' | 'Female';
   grade: GradeLevel;
   stream: string;
@@ -120,7 +132,15 @@ export interface Learner {
   guardianName: string;
   guardianPhone: string;
   guardianEmail?: string;
+  guardianRelationship?: 'Mother' | 'Father' | 'Guardian' | 'Sponsor' | 'Relative';
   parentNationalId?: string; // Kenya National ID for KEMIS verification & capitation
+  // Second Parent / Guardian
+  secondGuardianName?: string;
+  secondGuardianPhone?: string;
+  secondGuardianEmail?: string;
+  secondGuardianRelationship?: 'Mother' | 'Father' | 'Guardian' | 'Sponsor' | 'Relative';
+  secondParentNationalId?: string;
+  isBoarder?: boolean; // True for boarding students
   isPhoneEncrypted?: boolean;
   isNationalIdEncrypted?: boolean;
   bloodGroup?: string;
@@ -742,4 +762,183 @@ export interface KemisTransferRecord {
   releaseLetterRef: string;
   effectiveDate: string;
   approvalStatus: 'Approved by Sub-County Director' | 'Pending BoM Approval' | 'Synchronized on NEMIS';
+}
+
+// ============================================================================
+// PART F: HEALTH MODULE EXTENSIONS
+// ============================================================================
+export interface SicknessRecord {
+  id: string;
+  learnerId: string;
+  learnerName: string;
+  admissionNo: string;
+  grade: GradeLevel;
+  stream: string;
+  isBoarder: boolean;
+  dateTime: string;
+  symptoms: string[];
+  vitals: {
+    temperature: number; // e.g. 38.4
+    bloodPressure?: string; // e.g. "115/75"
+    pulse?: number; // e.g. 82
+    weightKg?: number;
+  };
+  actionTaken: string; // e.g. "Rest in Sickbay, Paracetamol 500mg administered"
+  attendedByStaff: string; // e.g. "Nurse Sister Beatrice (KRN)"
+  notes?: string;
+  parentNotified: boolean;
+  parentNotificationDetails?: {
+    notifiedAt: string;
+    channel: 'SMS' | 'Email' | 'In-App';
+    recipientPhone: string;
+    guardianName: string;
+    status: 'Delivered';
+  };
+}
+
+export interface HospitalReferral {
+  id: string;
+  learnerId: string;
+  learnerName: string;
+  admissionNo: string;
+  grade: GradeLevel;
+  stream: string;
+  hospitalName: string; // e.g. "Limuru Sub-County Level 4 Hospital"
+  dateTime: string;
+  accompanyingStaff: string; // e.g. "Nurse Sister Beatrice & Mr. Patrick Wanjala"
+  diagnosis: string;
+  treatment: string;
+  prescribedMedication: string;
+  followUpDate: string;
+  status: 'At Hospital' | 'Returned to Campus';
+  departureParentNotified: boolean;
+  returnParentNotified: boolean;
+  returnDateTime?: string;
+  parentNotificationLog: {
+    timestamp: string;
+    event: 'Referred to Hospital' | 'Returned to Campus';
+    channel: 'SMS' | 'Call' | 'In-App';
+    recipientPhone: string;
+    guardianName: string;
+    notes?: string;
+  }[];
+}
+
+// ============================================================================
+// PART C: ADMINISTRATION & SCHOOL BRANCHES
+// ============================================================================
+export interface SchoolBranch {
+  id: string;
+  branchName: string;
+  branchCode: string;
+  parentSchoolId: string;
+  parentSchoolName: string;
+  location: {
+    county: string;
+    subCounty: string;
+    ward: string;
+    address: string;
+  };
+  contact: {
+    phone: string;
+    email: string;
+    postalAddress: string;
+  };
+  headOfBranch: {
+    name: string;
+    tscNo?: string;
+    phone: string;
+    email: string;
+  };
+  capacity: number;
+  currentEnrollment: number;
+  establishedYear: number;
+  status: 'Active' | 'Under Development';
+}
+
+// ============================================================================
+// PART B: APPROVALS & WORKFLOW DEFINITION
+// ============================================================================
+export type ApprovalRequestType =
+  | 'Capitation Disbursement'
+  | 'Teacher Transfer'
+  | 'Infrastructure Grant'
+  | 'Major Budget Adjustment'
+  | 'School Registration'
+  | 'Staff Leave Request'
+  | 'SNE Special Fund';
+
+export type ApprovalStatus = 'Pending' | 'Approved' | 'Rejected';
+
+export interface ApprovalItem {
+  id: string;
+  trackingRef: string;
+  type: ApprovalRequestType;
+  title: string;
+  schoolName: string;
+  schoolCode: string;
+  subCounty: string;
+  submittedBy: string;
+  submitterRole: string;
+  submitterEmail: string;
+  submittedDate: string;
+  dueDate: string;
+  amountKes?: number;
+  description: string;
+  urgency: 'Normal' | 'Urgent' | 'Immediate';
+  status: ApprovalStatus;
+  currentStageNumber: number;
+  totalStages: number;
+  currentStageRole: string;
+  approvalHistory: {
+    stage: number;
+    stageRole: string;
+    action: 'Approved' | 'Rejected' | 'Commented';
+    officerName: string;
+    timestamp: string;
+    comments?: string;
+  }[];
+  attachments?: { name: string; url: string; size: string }[];
+}
+
+export interface ApprovalStageConfig {
+  stageNumber: number;
+  stageName: string;
+  approverRole: string; // e.g. 'SCDE', 'DQASO', 'CDE', 'Director Finance'
+  approverUserEmail?: string;
+  requirement: 'One Approver' | 'All Approvers';
+  slaHours: number;
+}
+
+export interface ApprovalWorkflowConfig {
+  id: string;
+  requestType: ApprovalRequestType;
+  description: string;
+  active: boolean;
+  stages: ApprovalStageConfig[];
+  updatedAt: string;
+  updatedBy: string;
+}
+
+// ============================================================================
+// PART D: TWO-WAY PARENT COMMUNICATION
+// ============================================================================
+export interface ParentDirectMessage {
+  id: string;
+  learnerId: string;
+  learnerName: string;
+  parentName: string;
+  parentPhone: string;
+  parentEmail: string;
+  recipientCategory: 'Class Teacher' | 'Head Teacher / Principal' | 'Administration & Accounts' | 'School Nurse';
+  subject: string;
+  body: string;
+  sentAt: string;
+  status: 'Sent' | 'Delivered' | 'Read' | 'Replied';
+  reply?: {
+    repliedBy: string;
+    repliedByRole: string;
+    replyText: string;
+    repliedAt: string;
+  };
 }

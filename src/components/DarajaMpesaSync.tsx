@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Smartphone,
   CheckCircle2,
@@ -19,9 +19,19 @@ import {
   Check,
   Eye,
   EyeOff,
+  Upload,
+  AlertTriangle,
+  AlertCircle,
+  Search,
+  UserCheck,
+  ArrowRight,
+  Download,
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { Learner, DarajaMpesaPayment, VoteHead } from '../types/school';
 import { exportToExcel } from '../utils/excelExport';
+import { uploadFileWithProgress } from '../services/storageService';
+import { useAuth } from '../context/AuthContext';
 
 interface Props {
   students: Learner[];
@@ -29,12 +39,33 @@ interface Props {
   onProcessPayment: (payment: DarajaMpesaPayment) => void;
 }
 
+interface ParsedStatementRow {
+  receiptNo: string;
+  transTime: string;
+  details: string;
+  accountRef: string;
+  phone: string;
+  amount: number;
+  matchedLearner?: Learner;
+  matchType?: 'account_no' | 'phone' | 'name' | 'manual';
+  status: 'Matched' | 'Unmatched';
+}
+
 export function DarajaMpesaSync({ students, payments, onProcessPayment }: Props) {
-  const [activeTab, setActiveTab] = useState<'api_settings' | 'webhook_log'>('api_settings');
+  const { currentUser } = useAuth();
+  const [activeTab, setActiveTab] = useState<'api_settings' | 'webhook_log' | 'statement_upload'>('statement_upload');
   const [showSecret, setShowSecret] = useState(false);
   const [showPasskey, setShowPasskey] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Statement upload states
+  const [statementFileName, setStatementFileName] = useState<string>('');
+  const [isUploadingStatement, setIsUploadingStatement] = useState<boolean>(false);
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
+  const [statementRows, setStatementRows] = useState<ParsedStatementRow[]>([]);
+  const [unmatchedSearch, setUnmatchedSearch] = useState<string>('');
+  const [manualMatchSelections, setManualMatchSelections] = useState<Record<string, string>>({}); // receiptNo -> studentId
 
   // Daraja API Configuration State
   const [apiConfig, setApiConfig] = useState(() => {
@@ -73,6 +104,201 @@ export function DarajaMpesaSync({ students, payments, onProcessPayment }: Props)
     }, 1000);
   };
 
+  // Upload & Parse Official M-Pesa Statement (CSV / Excel)
+  const handleStatementUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setStatementFileName(file.name);
+    setIsUploadingStatement(true);
+    setUploadProgress(15);
+
+    try {
+      const uploader = currentUser
+        ? { uid: currentUser.uid, fullName: currentUser.fullName, role: currentUser.role }
+        : { uid: 'acc_sys', fullName: 'School Accountant', role: 'accountant' };
+
+      // Persist statement file in storage
+      await uploadFileWithProgress({
+        file,
+        category: 'mpesa_statement',
+        linkedRecordId: 'mpesa_stmt_' + Date.now(),
+        linkedRecordType: 'mpesa_statement',
+        user: uploader,
+        notes: `M-Pesa Statement: ${file.name}`,
+        expectedType: 'spreadsheet',
+        onProgress: (p) => setUploadProgress(p),
+      });
+
+      // Parse with xlsx
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: 'array' });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rawRows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { defval: '' });
+
+      const parsed: ParsedStatementRow[] = [];
+
+      rawRows.forEach((row, i) => {
+        // Flexible key matching for Safaricom C2B Statement headers
+        const receiptNo = (
+          row['Receipt No.'] ||
+          row['Receipt No'] ||
+          row['Receipt'] ||
+          row['Trans ID'] ||
+          row['Transaction ID'] ||
+          `MP${100000 + i}`
+        ).toString().trim();
+
+        const transTime = (
+          row['Completion Time'] ||
+          row['Time'] ||
+          row['Date'] ||
+          new Date().toISOString().replace('T', ' ').substring(0, 16)
+        ).toString().trim();
+
+        const details = (row['Details'] || row['Transaction Details'] || '').toString().trim();
+        const accountRef = (
+          row['Account No.'] ||
+          row['Account'] ||
+          row['BillRefNumber'] ||
+          row['Acc'] ||
+          row['Ref'] ||
+          ''
+        ).toString().trim();
+
+        const phone = (
+          row['Phone'] ||
+          row['Other Party Info'] ||
+          row['MSISDN'] ||
+          row['Mobile'] ||
+          ''
+        ).toString().replace(/[^0-9+]/g, '');
+
+        const rawAmount = row['Paid In'] || row['Amount'] || row['Trans Amount'] || row['Credit'] || 0;
+        const amount = parseFloat(String(rawAmount).replace(/[^0-9.]/g, '')) || 0;
+
+        if (amount <= 0) return; // skip non-credit / debit rows
+
+        // Auto-match algorithm
+        let matched: Learner | undefined;
+        let matchType: ParsedStatementRow['matchType'];
+
+        // 1. Match by Account Reference (Admission No or NEMIS UPI)
+        if (accountRef) {
+          matched = students.find(
+            (s) =>
+              s.admissionNo.toLowerCase() === accountRef.toLowerCase() ||
+              s.admissionNo.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === accountRef.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() ||
+              s.nemisUpi.toLowerCase() === accountRef.toLowerCase()
+          );
+          if (matched) matchType = 'account_no';
+        }
+
+        // 2. Match by Guardian Phone
+        if (!matched && phone) {
+          const cleanPhone = phone.replace(/[^0-9]/g, '').slice(-9); // last 9 digits
+          matched = students.find((s) => {
+            const sPhone = s.guardianPhone.replace(/[^0-9]/g, '');
+            return sPhone.includes(cleanPhone);
+          });
+          if (matched) matchType = 'phone';
+        }
+
+        // 3. Match by Details / Name
+        if (!matched && details) {
+          const cleanDetails = details.toLowerCase();
+          matched = students.find((s) => cleanDetails.includes(s.name.toLowerCase()));
+          if (matched) matchType = 'name';
+        }
+
+        parsed.push({
+          receiptNo,
+          transTime,
+          details,
+          accountRef,
+          phone,
+          amount,
+          matchedLearner: matched,
+          matchType,
+          status: matched ? 'Matched' : 'Unmatched',
+        });
+      });
+
+      setStatementRows(parsed);
+      setToastMessage(`Parsed ${parsed.length} statement rows from '${file.name}'.`);
+      setTimeout(() => setToastMessage(null), 4000);
+    } catch (err: any) {
+      setToastMessage(`Statement upload error: ${err.message || 'Invalid format'}`);
+    } finally {
+      setIsUploadingStatement(false);
+    }
+  };
+
+  // Reconcile a single statement row into real fee payment
+  const handleReconcileRow = (row: ParsedStatementRow, overrideStudent?: Learner) => {
+    const student = overrideStudent || row.matchedLearner;
+    if (!student) return;
+
+    const newPayment: DarajaMpesaPayment = {
+      transId: row.receiptNo,
+      billRefNumber: student.admissionNo,
+      transAmount: row.amount,
+      msisdn: row.phone || student.guardianPhone,
+      firstName: student.guardianName.split(' ')[0] || 'Guardian',
+      middleName: '',
+      lastName: student.guardianName.split(' ')[1] || '',
+      transTime: row.transTime,
+      matchedLearnerId: student.id,
+      matchedLearnerName: student.name,
+      allocatedVotehead: apiConfig.defaultVotehead || 'Tuition & Learning Materials',
+      receiptNumber: `REC-${row.receiptNo}`,
+      status: 'Confirmed',
+    };
+
+    onProcessPayment(newPayment);
+
+    // Update row in state
+    setStatementRows((prev) =>
+      prev.map((r) =>
+        r.receiptNo === row.receiptNo
+          ? { ...r, status: 'Matched', matchedLearner: student, matchType: 'manual' }
+          : r
+      )
+    );
+
+    setToastMessage(`Payment of KES ${row.amount.toLocaleString()} reconciled & credited to ${student.name}.`);
+    setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  // Reconcile all matched rows in batch
+  const handleReconcileAllMatched = () => {
+    const matchedOnly = statementRows.filter((r) => r.status === 'Matched' && r.matchedLearner);
+    if (matchedOnly.length === 0) return;
+
+    matchedOnly.forEach((row) => {
+      const student = row.matchedLearner!;
+      const newPayment: DarajaMpesaPayment = {
+        transId: row.receiptNo,
+        billRefNumber: student.admissionNo,
+        transAmount: row.amount,
+        msisdn: row.phone || student.guardianPhone,
+        firstName: student.guardianName.split(' ')[0] || 'Guardian',
+        middleName: '',
+        lastName: student.guardianName.split(' ')[1] || '',
+        transTime: row.transTime,
+        matchedLearnerId: student.id,
+        matchedLearnerName: student.name,
+        allocatedVotehead: apiConfig.defaultVotehead || 'Tuition & Learning Materials',
+        receiptNumber: `REC-${row.receiptNo}`,
+        status: 'Confirmed',
+      };
+      onProcessPayment(newPayment);
+    });
+
+    setToastMessage(`Reconciled and credited all ${matchedOnly.length} matched payments to learner ledgers!`);
+    setTimeout(() => setToastMessage(null), 4000);
+  };
+
   const handleExportExcel = () => {
     exportToExcel(
       'Limuru_Model_Safaricom_Daraja_Mpesa_Sync_Report',
@@ -86,10 +312,12 @@ export function DarajaMpesaSync({ students, payments, onProcessPayment }: Props)
         { header: 'Target Votehead', key: 'allocatedVotehead' },
         { header: 'Payer Phone', key: 'msisdn' },
         { header: 'Timestamp', key: 'transTime' },
-        { header: 'SMS Callback', key: 'smsStatus' },
       ]
     );
   };
+
+  const matchedRows = statementRows.filter((r) => r.status === 'Matched');
+  const unmatchedRows = statementRows.filter((r) => r.status === 'Unmatched');
 
   return (
     <div className="space-y-6">
@@ -107,34 +335,32 @@ export function DarajaMpesaSync({ students, payments, onProcessPayment }: Props)
       )}
 
       {/* Header Strip */}
-      <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
             <h2 className="text-lg font-bold text-slate-900">
-              Safaricom Daraja API Gateway & C2B Paybill Configuration
+              Safaricom Daraja API Gateway & C2B Paybill 522123
             </h2>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            School Paybill: <strong>{apiConfig.shortCode}</strong> · Direct webhook ledger reconciliation, instant balance deduction and parent SMS notifications.
+            Limuru Model School Center: 20401823 &bull; Paybill: <strong>{apiConfig.shortCode}</strong> &bull; Manual statement fallback, reconciliation, and live audit ledger.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {/* Print Audit Log */}
           <button
             onClick={() => window.print()}
-            className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs font-semibold flex items-center gap-1.5 transition-colors border border-slate-300"
+            className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors border border-slate-300"
             title="Print Transactions"
           >
             <Printer className="w-3.5 h-3.5" />
             Print Ledger
           </button>
 
-          {/* Export to Excel */}
           <button
             onClick={handleExportExcel}
-            className="px-3 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors"
+            className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors"
           >
             <FileSpreadsheet className="w-3.5 h-3.5" />
             Export M-Pesa (.csv)
@@ -142,18 +368,18 @@ export function DarajaMpesaSync({ students, payments, onProcessPayment }: Props)
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex border-b border-slate-200 bg-white px-5 rounded-t-lg text-xs font-semibold">
+      {/* Navigation Tabs */}
+      <div className="flex border-b border-slate-200 bg-white px-5 rounded-t-xl text-xs font-semibold">
         <button
-          onClick={() => setActiveTab('api_settings')}
+          onClick={() => setActiveTab('statement_upload')}
           className={`py-3 px-4 border-b-2 transition-colors flex items-center gap-1.5 ${
-            activeTab === 'api_settings'
+            activeTab === 'statement_upload'
               ? 'border-emerald-700 text-emerald-800'
               : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}
         >
-          <Key className="w-4 h-4" />
-          Daraja API Credentials & Gateway Settings
+          <Upload className="w-4 h-4" />
+          M-Pesa Statement Upload & Resolution ({unmatchedRows.length} Unmatched)
         </button>
         <button
           onClick={() => setActiveTab('webhook_log')}
@@ -164,14 +390,266 @@ export function DarajaMpesaSync({ students, payments, onProcessPayment }: Props)
           }`}
         >
           <Radio className="w-4 h-4" />
-          Live Transactions Log ({payments.length})
+          Confirmed Transactions Ledger ({payments.length})
+        </button>
+        <button
+          onClick={() => setActiveTab('api_settings')}
+          className={`py-3 px-4 border-b-2 transition-colors flex items-center gap-1.5 ${
+            activeTab === 'api_settings'
+              ? 'border-emerald-700 text-emerald-800'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <Key className="w-4 h-4" />
+          Daraja API Settings (Paybill 522123)
         </button>
       </div>
 
-      {/* Tab 1: API Settings Form */}
+      {/* Tab 1: Manual Statement Fallback & Resolution */}
+      {activeTab === 'statement_upload' && (
+        <div className="space-y-6">
+          {/* Upload Card */}
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="font-bold text-slate-900 text-sm">
+                  Upload Safaricom M-Pesa Statement (Manual Fallback)
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Upload monthly or daily statement from Safaricom M-Pesa Portal. Automatically matches learners by Account No, Phone, or Name.
+                </p>
+              </div>
+              <label className="cursor-pointer px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg font-bold text-xs inline-flex items-center gap-2 shadow-xs transition-colors shrink-0">
+                <Upload className="w-4 h-4" />
+                {isUploadingStatement ? 'Processing & Persisting...' : 'Upload Statement (.csv, .xlsx)'}
+                <input
+                  type="file"
+                  accept=".csv,.xlsx,.xls"
+                  disabled={isUploadingStatement}
+                  onChange={handleStatementUpload}
+                  className="hidden"
+                />
+              </label>
+            </div>
+
+            {isUploadingStatement && (
+              <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
+                <div
+                  className="bg-emerald-600 h-2 transition-all duration-200"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+            )}
+
+            {statementFileName && (
+              <div className="flex items-center gap-3 text-xs text-slate-700 font-mono">
+                <span>File: <strong>{statementFileName}</strong></span>
+                <span>&bull;</span>
+                <span className="text-emerald-700 font-bold">{matchedRows.length} Matched</span>
+                <span>&bull;</span>
+                <span className="text-amber-700 font-bold">{unmatchedRows.length} Unmatched (Needs Resolution)</span>
+              </div>
+            )}
+          </div>
+
+          {/* Matched Payments Section */}
+          {matchedRows.length > 0 && (
+            <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
+              <div className="p-3.5 bg-emerald-50/70 border-b border-emerald-200 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2 font-bold text-emerald-950">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  <span>Auto-Matched Transactions ({matchedRows.length})</span>
+                </div>
+                <button
+                  onClick={handleReconcileAllMatched}
+                  className="px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-lg text-xs shadow-xs"
+                >
+                  Credit All {matchedRows.length} to Learner Ledgers
+                </button>
+              </div>
+
+              <div className="max-h-60 overflow-y-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-100 text-slate-700 font-bold sticky top-0">
+                    <tr>
+                      <th className="p-2.5">Trans ID</th>
+                      <th className="p-2.5">Matched Learner</th>
+                      <th className="p-2.5">Match Criteria</th>
+                      <th className="p-2.5">Payer Phone</th>
+                      <th className="p-2.5 text-right">Amount (KES)</th>
+                      <th className="p-2.5 text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {matchedRows.map((r, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50">
+                        <td className="p-2.5 font-mono font-bold text-slate-900">{r.receiptNo}</td>
+                        <td className="p-2.5">
+                          <div className="font-semibold text-slate-900">{r.matchedLearner?.name}</div>
+                          <div className="text-[11px] text-slate-500 font-mono">{r.matchedLearner?.admissionNo}</div>
+                        </td>
+                        <td className="p-2.5">
+                          <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded font-medium text-[10px]">
+                            {r.matchType === 'account_no' ? 'Account No Match' : r.matchType === 'phone' ? 'Phone Match' : 'Name Match'}
+                          </span>
+                        </td>
+                        <td className="p-2.5 font-mono text-slate-600">{r.phone || '-'}</td>
+                        <td className="p-2.5 text-right font-bold text-emerald-800">
+                          KES {r.amount.toLocaleString()}
+                        </td>
+                        <td className="p-2.5 text-right">
+                          <button
+                            onClick={() => handleReconcileRow(r)}
+                            className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-[11px] font-bold shadow-2xs"
+                          >
+                            Reconcile
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Unmatched Payments Section for Accountant Resolution */}
+          {unmatchedRows.length > 0 && (
+            <div className="bg-white rounded-xl border border-amber-300 shadow-xs overflow-hidden">
+              <div className="p-3.5 bg-amber-50 border-b border-amber-200 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-2 font-bold text-amber-950">
+                  <AlertTriangle className="w-4 h-4 text-amber-700" />
+                  <span>Unmatched Payments Drawer ({unmatchedRows.length}) &mdash; Accountant Resolution</span>
+                </div>
+                <div className="text-[11px] text-amber-800">
+                  Assign learner from the school register to credit fee balance
+                </div>
+              </div>
+
+              <div className="max-h-72 overflow-y-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-100 text-slate-700 font-bold sticky top-0">
+                    <tr>
+                      <th className="p-2.5">Trans ID</th>
+                      <th className="p-2.5">Statement Details / Acc Ref</th>
+                      <th className="p-2.5">Payer Phone</th>
+                      <th className="p-2.5 text-right">Amount (KES)</th>
+                      <th className="p-2.5">Assign Learner (Resolution)</th>
+                      <th className="p-2.5 text-right">Confirm</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {unmatchedRows.map((r, idx) => {
+                      const selectedId = manualMatchSelections[r.receiptNo] || '';
+                      const selectedStudent = students.find((s) => s.id === selectedId);
+
+                      return (
+                        <tr key={idx} className="hover:bg-amber-50/40">
+                          <td className="p-2.5 font-mono font-bold text-slate-900">{r.receiptNo}</td>
+                          <td className="p-2.5">
+                            <div className="text-slate-800 font-medium">{r.details || 'C2B Paybill Transfer'}</div>
+                            <div className="text-[11px] font-mono text-slate-500">Ref: {r.accountRef || 'None'}</div>
+                          </td>
+                          <td className="p-2.5 font-mono text-slate-600">{r.phone || '-'}</td>
+                          <td className="p-2.5 text-right font-bold text-rose-700">
+                            KES {r.amount.toLocaleString()}
+                          </td>
+                          <td className="p-2.5">
+                            <select
+                              value={selectedId}
+                              onChange={(e) =>
+                                setManualMatchSelections({
+                                  ...manualMatchSelections,
+                                  [r.receiptNo]: e.target.value,
+                                })
+                              }
+                              className="border border-slate-300 rounded px-2 py-1 text-xs w-48 text-slate-900 focus:ring-1 focus:ring-emerald-600 outline-hidden"
+                            >
+                              <option value="">-- Select Learner --</option>
+                              {students.map((std) => (
+                                <option key={std.id} value={std.id}>
+                                  {std.name} ({std.admissionNo} &bull; Bal: KES {std.fees.balance})
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="p-2.5 text-right">
+                            <button
+                              disabled={!selectedStudent}
+                              onClick={() => selectedStudent && handleReconcileRow(r, selectedStudent)}
+                              className="px-3 py-1 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-40 text-white rounded text-[11px] font-bold shadow-2xs"
+                            >
+                              Resolve
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tab 2: Confirmed Live Transactions Log */}
+      {activeTab === 'webhook_log' && (
+        <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 uppercase font-bold">
+                <tr>
+                  <th className="p-3">Receipt No</th>
+                  <th className="p-3">M-Pesa TransID</th>
+                  <th className="p-3">Learner & Adm No</th>
+                  <th className="p-3">Payer MSISDN</th>
+                  <th className="p-3 text-right">Amount (KES)</th>
+                  <th className="p-3">Allocated Votehead</th>
+                  <th className="p-3">Timestamp</th>
+                  <th className="p-3 text-center">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {payments.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="p-8 text-center text-slate-400">
+                      No M-Pesa transactions logged yet. Incoming Paybill payments or reconciled statement rows will appear here.
+                    </td>
+                  </tr>
+                ) : (
+                  payments.map((p, idx) => (
+                    <tr key={idx} className="hover:bg-slate-50">
+                      <td className="p-3 font-mono font-medium text-slate-600">{p.receiptNumber}</td>
+                      <td className="p-3 font-mono font-bold text-slate-900">{p.transId}</td>
+                      <td className="p-3">
+                        <div className="font-semibold text-slate-800">{p.matchedLearnerName}</div>
+                        <div className="font-mono text-[11px] text-slate-500">{p.billRefNumber}</div>
+                      </td>
+                      <td className="p-3 font-mono text-slate-600">{p.msisdn}</td>
+                      <td className="p-3 text-right font-bold text-emerald-700 tabular-nums">
+                        KES {p.transAmount.toLocaleString()}
+                      </td>
+                      <td className="p-3 text-slate-700">{p.allocatedVotehead}</td>
+                      <td className="p-3 text-slate-500">{p.transTime}</td>
+                      <td className="p-3 text-center">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                          {p.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Tab 3: API Settings Form */}
       {activeTab === 'api_settings' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 bg-white p-6 rounded-b-lg border border-slate-200 shadow-xs space-y-5">
+          <div className="lg:col-span-2 bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-5">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div>
                 <h3 className="font-semibold text-slate-900 text-sm">
@@ -220,15 +698,13 @@ export function DarajaMpesaSync({ students, payments, onProcessPayment }: Props)
                 <label className="font-semibold text-slate-700 block mb-1">
                   Consumer Key:
                 </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    required
-                    value={apiConfig.consumerKey}
-                    onChange={(e) => setApiConfig({ ...apiConfig, consumerKey: e.target.value })}
-                    className="w-full border border-slate-300 rounded px-3 py-2 text-xs font-mono text-slate-900"
-                  />
-                </div>
+                <input
+                  type="text"
+                  required
+                  value={apiConfig.consumerKey}
+                  onChange={(e) => setApiConfig({ ...apiConfig, consumerKey: e.target.value })}
+                  className="w-full border border-slate-300 rounded px-3 py-2 text-xs font-mono text-slate-900"
+                />
               </div>
 
               <div>
@@ -363,12 +839,11 @@ export function DarajaMpesaSync({ students, payments, onProcessPayment }: Props)
             </form>
           </div>
 
-          {/* Right Info Box */}
           <div className="space-y-4">
-            <div className="bg-slate-900 text-white p-5 rounded-lg border border-slate-800 shadow-md">
+            <div className="bg-slate-900 text-white p-5 rounded-xl border border-slate-800 shadow-md">
               <div className="flex items-center gap-2 text-emerald-400 mb-3 text-xs font-bold uppercase tracking-wider">
                 <Server className="w-4 h-4" />
-                Webhook Infrastructure
+                Live Paybill 522123 Webhook
               </div>
               <p className="text-xs text-slate-300 leading-relaxed">
                 When a parent pays via Paybill <strong>{apiConfig.shortCode}</strong> using their child&apos;s Admission Number as Account Number, Safaricom sends an instant JSON payload directly to the school server.
@@ -379,66 +854,6 @@ export function DarajaMpesaSync({ students, payments, onProcessPayment }: Props)
                 <div>IP Whitelist: 196.201.214.* (Safaricom)</div>
               </div>
             </div>
-
-            <div className="bg-white p-4 rounded-lg border border-slate-200 text-xs space-y-2.5">
-              <span className="font-bold text-slate-900 block">KDPA Compliance & Safeguards:</span>
-              <p className="text-slate-600 text-[11px]">
-                Parent phone numbers and transaction codes are tokenized under Section 31 of the Kenya Data Protection Act (KDPA) 2019.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Tab 2: Transactions Log */}
-      {activeTab === 'webhook_log' && (
-        <div className="bg-white rounded-lg border border-slate-200 shadow-xs overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase font-semibold">
-                <tr>
-                  <th className="p-3">Receipt No</th>
-                  <th className="p-3">M-Pesa TransID</th>
-                  <th className="p-3">Learner & Adm No</th>
-                  <th className="p-3">Payer MSISDN</th>
-                  <th className="p-3 text-right">Amount (KES)</th>
-                  <th className="p-3">Allocated Votehead</th>
-                  <th className="p-3">Timestamp</th>
-                  <th className="p-3 text-center">SMS Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {payments.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="p-8 text-center text-slate-400">
-                      No M-Pesa transactions logged yet. Incoming Paybill payments will populate automatically.
-                    </td>
-                  </tr>
-                ) : (
-                  payments.map((p, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50">
-                      <td className="p-3 font-mono font-medium text-slate-600">{p.receiptNumber}</td>
-                      <td className="p-3 font-mono font-bold text-slate-900">{p.transId}</td>
-                      <td className="p-3">
-                        <div className="font-semibold text-slate-800">{p.matchedLearnerName}</div>
-                        <div className="font-mono text-[11px] text-slate-500">{p.billRefNumber}</div>
-                      </td>
-                      <td className="p-3 font-mono text-slate-600">{p.msisdn}</td>
-                      <td className="p-3 text-right font-bold text-emerald-700 tabular-nums">
-                        KES {p.transAmount.toLocaleString()}
-                      </td>
-                      <td className="p-3 text-slate-700">{p.allocatedVotehead}</td>
-                      <td className="p-3 text-slate-500">{p.transTime}</td>
-                      <td className="p-3 text-center">
-                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
-                          {p.smsStatus}
-                        </span>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
           </div>
         </div>
       )}

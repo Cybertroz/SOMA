@@ -55,8 +55,6 @@ export const DataPrivacyAndAuditModule: React.FC<DataPrivacyAndAuditModuleProps>
   const [sensitivityFilter, setSensitivityFilter] = useState<string>('All');
   const [isExporting, setIsExporting] = useState(false);
   const [feedbackToast, setFeedbackToast] = useState<string | null>(null);
-  const importAuditFileRef = useRef<HTMLInputElement>(null);
-
   const showToast = (msg: string) => {
     setFeedbackToast(msg);
     setTimeout(() => setFeedbackToast(null), 3500);
@@ -78,42 +76,6 @@ export const DataPrivacyAndAuditModule: React.FC<DataPrivacyAndAuditModuleProps>
       ]
     );
     showToast('Exported audit logs to Excel.');
-  };
-
-  const handleImportAuditCsv = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      try {
-        const text = evt.target?.result as string;
-        const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
-        let imported = 0;
-
-        for (let i = 1; i < lines.length; i++) {
-          const cols = lines[i].split(',').map((c) => c.trim().replace(/^"|"$/g, ''));
-          if (cols.length >= 4) {
-            onAddAuditLog({
-              userId: currentUser.id,
-              userName: cols[1] || currentUser.name,
-              userRole: (cols[2] as any) || currentUser.role,
-              action: (cols[3] as any) || 'LEGACY_LOG_IMPORT',
-              targetResource: cols[4] || 'Audit Log Archive',
-              details: cols[5] || `Imported entry from ${file.name}`,
-              ipAddress: cols[6] || '127.0.0.1 (Archived)',
-              sensitivityLevel: (cols[7] as any) || 'General',
-            });
-            imported++;
-          }
-        }
-        showToast(`Successfully archived & imported ${imported} audit records from ${file.name}.`);
-      } catch (err) {
-        showToast('Error importing audit log CSV.');
-      }
-    };
-    reader.readAsText(file);
-    if (e.target) e.target.value = '';
   };
 
   // Masking helpers
@@ -212,15 +174,6 @@ export const DataPrivacyAndAuditModule: React.FC<DataPrivacyAndAuditModuleProps>
           </button>
         </div>
       )}
-
-      {/* Hidden File Input for Audit Archive Import */}
-      <input
-        type="file"
-        ref={importAuditFileRef}
-        onChange={handleImportAuditCsv}
-        accept=".csv,.txt"
-        className="hidden"
-      />
 
       {/* Top Banner */}
       <div className="bg-slate-900 text-white p-6 rounded-2xl border border-slate-800 shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
@@ -445,22 +398,15 @@ export const DataPrivacyAndAuditModule: React.FC<DataPrivacyAndAuditModuleProps>
               <span>Export Excel</span>
             </button>
 
-            {/* Import Archive */}
-            <button
-              onClick={() => importAuditFileRef.current?.click()}
-              className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold shadow-xs transition-colors flex items-center gap-1.5"
-              title="Import or Archive Audit Logs via CSV"
-            >
-              <Upload className="w-3.5 h-3.5 text-slate-200" />
-              <span>Import (.csv)</span>
-            </button>
-
             <select
               value={actionFilter}
               onChange={(e) => setActionFilter(e.target.value)}
               className="px-2.5 py-1.5 border border-slate-300 rounded-md text-xs bg-white font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
             >
               <option value="All">All Actions</option>
+              <option value="FILE_UPLOAD">FILE_UPLOAD</option>
+              <option value="FILE_DOWNLOAD">FILE_DOWNLOAD</option>
+              <option value="FILE_DELETE">FILE_DELETE</option>
               <option value="DATA_EXPORT_EXCEL">DATA_EXPORT_EXCEL</option>
               <option value="KEMIS_SYNC">KEMIS_SYNC</option>
               <option value="PII_DECRYPT_VIEW">PII_DECRYPT_VIEW</option>

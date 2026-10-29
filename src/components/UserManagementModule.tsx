@@ -39,6 +39,7 @@ import {
   Building,
   AlertCircle,
   X,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { usePrintPreview } from '../context/PrintPreviewContext';
@@ -58,6 +59,7 @@ import {
 } from 'firebase/firestore';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { exportToExcel } from '../utils/excelExport';
+import { FileUploadZone } from './FileUploadZone';
 
 export const UserManagementModule: React.FC = () => {
   const { currentUser, resetPassword, logAuditAction } = useAuth();
@@ -78,6 +80,7 @@ export const UserManagementModule: React.FC = () => {
   const [newPassword, setNewPassword] = useState('');
   const [newDepartment, setNewDepartment] = useState('Instructional Faculty');
   const [newPhone, setNewPhone] = useState('+254 7');
+  const [newPhotoUrl, setNewPhotoUrl] = useState<string>('');
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -108,6 +111,7 @@ export const UserManagementModule: React.FC = () => {
             createdAt: data.createdAt || new Date().toISOString(),
             department: data.department || '',
             phone: data.phone || '',
+            photoUrl: data.photoUrl || undefined,
           });
         });
         setUsersList(users);
@@ -243,6 +247,7 @@ export const UserManagementModule: React.FC = () => {
             createdAt: new Date().toISOString(),
             department: newDepartment.trim(),
             phone: newPhone.trim(),
+            photoUrl: newPhotoUrl.trim() || undefined,
           });
         }
 
@@ -267,6 +272,7 @@ export const UserManagementModule: React.FC = () => {
         createdAt: new Date().toISOString(),
         department: newDepartment.trim(),
         phone: newPhone.trim(),
+        photoUrl: newPhotoUrl.trim() || undefined,
       };
 
       const updated = [createdProfile, ...usersList];
@@ -290,6 +296,7 @@ export const UserManagementModule: React.FC = () => {
     setNewRole('teacher');
     setNewDepartment('Instructional Faculty');
     setNewPhone('+254 7');
+    setNewPhotoUrl('');
     setCreateError(null);
   };
 
@@ -375,6 +382,25 @@ export const UserManagementModule: React.FC = () => {
       ),
     });
   };
+
+  const isAuthorized =
+    currentUser?.role === 'principal' ||
+    currentUser?.role === 'admin' ||
+    currentUser?.role === 'headteacher';
+
+  if (!isAuthorized) {
+    return (
+      <div className="p-8 bg-white rounded-xl border border-rose-200 shadow-sm text-center max-w-lg mx-auto space-y-3 my-12">
+        <Lock className="w-12 h-12 text-rose-600 mx-auto" />
+        <h3 className="font-bold text-slate-900 text-base">Restricted Administrative Access</h3>
+        <p className="text-xs text-slate-600 leading-relaxed">
+          Under institutional security guidelines and Kenya Data Protection Act 2019,
+          User Management and staff credential administration is strictly restricted to
+          the <strong>Principal and System Administrator</strong> accounts.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -580,16 +606,20 @@ export const UserManagementModule: React.FC = () => {
                     <tr key={user.uid} className="hover:bg-slate-50/70 transition-colors">
                       <td className="py-3 px-4 font-bold text-slate-900">
                         <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold text-xs shrink-0">
-                            {user.fullName
-                              .replace('Dr. ', '')
-                              .replace('Mr. ', '')
-                              .replace('Mrs. ', '')
-                              .replace('Mdm. ', '')
-                              .split(' ')
-                              .map((n) => n[0])
-                              .slice(0, 2)
-                              .join('')}
+                          <div className="w-9 h-9 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold text-xs shrink-0 overflow-hidden border border-slate-300">
+                            {user.photoUrl ? (
+                              <img src={user.photoUrl} alt={user.fullName} className="w-full h-full object-cover" />
+                            ) : (
+                              user.fullName
+                                .replace('Dr. ', '')
+                                .replace('Mr. ', '')
+                                .replace('Mrs. ', '')
+                                .replace('Mdm. ', '')
+                                .split(' ')
+                                .map((n) => n[0])
+                                .slice(0, 2)
+                                .join('')
+                            )}
                           </div>
                           <div>
                             <span className="block">{user.fullName}</span>
@@ -731,6 +761,20 @@ export const UserManagementModule: React.FC = () => {
                 />
               </div>
 
+              {/* Staff Profile Photo Upload */}
+              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                <FileUploadZone
+                  linkedRecordId="new_staff_photo"
+                  category="staff_photo"
+                  expectedType="image"
+                  label="Staff Profile Photo (Optional)"
+                  helperText="JPEG or PNG up to 5MB"
+                  compact
+                  maxFiles={1}
+                  onUploadSuccess={(rec) => setNewPhotoUrl(rec.downloadUrl)}
+                />
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="font-bold text-slate-700 block mb-1">Assigned Role:</label>
@@ -740,9 +784,14 @@ export const UserManagementModule: React.FC = () => {
                     className="w-full border border-slate-300 rounded-lg px-2.5 py-2 text-slate-900 font-semibold"
                   >
                     <option value="teacher">Teacher</option>
+                    <option value="class_teacher">Class Teacher</option>
+                    <option value="nurse">School Nurse</option>
                     <option value="bursar">Bursar</option>
+                    <option value="accountant">Accountant</option>
                     <option value="deputy">Deputy Principal</option>
                     <option value="headteacher">Head Teacher</option>
+                    <option value="principal">Principal</option>
+                    <option value="admin">Administrator</option>
                     <option value="parent">Parent</option>
                   </select>
                 </div>
