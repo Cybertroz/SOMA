@@ -222,18 +222,37 @@ export interface SMSBroadcast {
 export interface PayrollEmployee {
   id: string;
   tscOrIdNo: string;
+  tscStaffNo?: string;
   name: string;
+  fullName?: string;
   role: string;
+  designation?: string;
+  department?: string;
+  employmentStatus?: string;
   cadre: 'TSC Permanent' | 'BoM Contract' | 'Support Staff';
   basicSalary: number;
   houseAllowance: number;
   commuterAllowance: number;
+  hardshipAllowance?: number;
   grossPay: number;
+  grossSalary?: number;
   paye: number;
+  payeDeduction?: number;
   shaNhif: number;
+  nhifShaDeduction?: number;
   nssf: number;
+  nssfDeduction?: number;
   housingLevy: number;
+  housingLevyDeduction?: number;
   netPay: number;
+  netSalary?: number;
+  bankName?: string;
+  bankAccountNo?: string;
+  kraPin?: string;
+  shaNo?: string;
+  lastAppraisalScore?: number;
+  lastPaymentDate?: string;
+  nationalId?: string;
   month: string;
   status: 'Approved' | 'Paid';
 }
@@ -769,24 +788,31 @@ export interface KemisTransferRecord {
 // ============================================================================
 export interface SicknessRecord {
   id: string;
-  learnerId: string;
-  learnerName: string;
+  learnerId?: string;
+  studentId?: string;
+  learnerName?: string;
+  studentName?: string;
   admissionNo: string;
-  grade: GradeLevel;
-  stream: string;
-  isBoarder: boolean;
+  grade?: GradeLevel;
+  stream?: string;
+  isBoarder?: boolean;
   dateTime: string;
-  symptoms: string[];
-  vitals: {
+  symptoms: string | string[];
+  vitals?: {
     temperature: number; // e.g. 38.4
     bloodPressure?: string; // e.g. "115/75"
     pulse?: number; // e.g. 82
     weightKg?: number;
   };
+  temperatureVitals?: string;
   actionTaken: string; // e.g. "Rest in Sickbay, Paracetamol 500mg administered"
-  attendedByStaff: string; // e.g. "Nurse Sister Beatrice (KRN)"
+  attendedByStaff?: string; // e.g. "Nurse Sister Beatrice (KRN)"
+  attendingStaff?: string;
   notes?: string;
-  parentNotified: boolean;
+  parentNotified?: boolean;
+  notificationSent?: boolean;
+  notificationChannel?: string;
+  notificationTimestamp?: string;
   parentNotificationDetails?: {
     notifiedAt: string;
     channel: 'SMS' | 'Email' | 'In-App';
@@ -798,23 +824,30 @@ export interface SicknessRecord {
 
 export interface HospitalReferral {
   id: string;
-  learnerId: string;
-  learnerName: string;
+  learnerId?: string;
+  studentId?: string;
+  learnerName?: string;
+  studentName?: string;
   admissionNo: string;
-  grade: GradeLevel;
-  stream: string;
+  grade?: GradeLevel;
+  stream?: string;
   hospitalName: string; // e.g. "Limuru Sub-County Level 4 Hospital"
   dateTime: string;
   accompanyingStaff: string; // e.g. "Nurse Sister Beatrice & Mr. Patrick Wanjala"
   diagnosis: string;
   treatment: string;
-  prescribedMedication: string;
+  prescribedMedication?: string;
+  medication?: string;
   followUpDate: string;
-  status: 'At Hospital' | 'Returned to Campus';
-  departureParentNotified: boolean;
-  returnParentNotified: boolean;
+  status: 'At Hospital' | 'Returned to Campus' | 'Discharged to School Sanatorium' | 'Recovered & Cleared' | 'Admitted / Under Evaluation';
+  departureParentNotified?: boolean;
+  returnParentNotified?: boolean;
+  parentNotifiedOnReferral?: boolean;
+  parentNotifiedOnReturn?: boolean;
+  referralNotificationTimestamp?: string;
+  returnNotificationTimestamp?: string;
   returnDateTime?: string;
-  parentNotificationLog: {
+  parentNotificationLog?: {
     timestamp: string;
     event: 'Referred to Hospital' | 'Returned to Campus';
     channel: 'SMS' | 'Call' | 'In-App';

@@ -25,6 +25,11 @@ import {
   User,
   Activity,
   Layers,
+  Send,
+  MessageSquare,
+  Plus,
+  X,
+  Users,
 } from 'lucide-react';
 import {
   Learner,
@@ -83,6 +88,83 @@ export const ParentPortalView: React.FC<ParentPortalViewProps> = ({
   const childMessages = smsBroadcasts.filter(
     (msg) => msg.targetGrade === 'All Grades' || msg.targetGrade === activeChild.grade
   );
+
+  // Two-Way Direct Messages to School & Both Parents State
+  const [messagesSubTab, setMessagesSubTab] = useState<'direct' | 'broadcasts'>('direct');
+  const [isComposeOpen, setIsComposeOpen] = useState(false);
+  const [composeRecipient, setComposeRecipient] = useState<
+    'Class Teacher' | 'Head Teacher / Principal' | 'Administration & Accounts' | 'School Nurse' | 'Both Parents / Guardians'
+  >('Class Teacher');
+  const [composeSubject, setComposeSubject] = useState('');
+  const [composeBody, setComposeBody] = useState('');
+  const [toastNotification, setToastNotification] = useState<string | null>(null);
+
+  const [directMessages, setDirectMessages] = useState([
+    {
+      id: 'dm-01',
+      recipientCategory: 'Class Teacher',
+      recipientName: 'Mr. Patrick Wanjala (Grade 7 Amboseli)',
+      subject: 'Inquiry on Grade 7 Integrated Science Project Logbook',
+      body: 'Jambo Mr. Wanjala, Brian mentioned they require specific plant specimens for tomorrow\'s strand practicals. Can we purchase these at the local market or does the school provide them?',
+      sentAt: '2026-10-27 16:40',
+      status: 'Replied' as const,
+      reply: {
+        repliedBy: 'Mr. Patrick Wanjala',
+        repliedByRole: 'Class Master & Senior Teacher',
+        replyText: 'Jambo Mama Brian, the school laboratory provides standard specimens. Brian only needs to bring his science practical logbook and ruler. Thank you.',
+        repliedAt: '2026-10-27 17:15',
+      },
+    },
+    {
+      id: 'dm-02',
+      recipientCategory: 'Administration & Accounts',
+      recipientName: 'Finance Office (Mr. David Mwangi)',
+      subject: 'Confirmation of Bank Deposit Slip for Term 1 Fees',
+      body: 'Hello Accounts, I deposited KES 8,000 via KCB Limuru branch this morning (Slip Ref: KCB-DEP-84920). Please reconcile with Brian\'s ledger.',
+      sentAt: '2026-10-28 09:20',
+      status: 'Read' as const,
+    },
+    {
+      id: 'dm-03',
+      recipientCategory: 'Both Parents / Guardians',
+      recipientName: 'Grace Auma (Mother) & David Omondi (Father)',
+      subject: 'Academic Clinic & Mid-Term Report Review Notice',
+      body: 'Joint parental consultation: Brian\'s Term 1 performance in Mathematics is strong (88%). Let us review his pre-technical studies portfolio before visiting day.',
+      sentAt: '2026-10-29 11:30',
+      status: 'Delivered' as const,
+    },
+  ]);
+
+  const handleSendDirectMessage = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!composeSubject.trim() || !composeBody.trim()) return;
+
+    const newMsg = {
+      id: `dm_${Date.now()}`,
+      recipientCategory: composeRecipient,
+      recipientName:
+        composeRecipient === 'Class Teacher'
+          ? 'Mr. Patrick Wanjala (Class Master)'
+          : composeRecipient === 'Head Teacher / Principal'
+          ? 'Dr. Anthony K. Macharia (Chief Principal)'
+          : composeRecipient === 'Administration & Accounts'
+          ? 'School Accounts & Bursar Office'
+          : composeRecipient === 'School Nurse'
+          ? 'Sister Beatrice (Resident Nurse)'
+          : `${activeChild.guardianName} & ${activeChild.secondGuardianName || 'Mr. David Omondi'}`,
+      subject: composeSubject.trim(),
+      body: composeBody.trim(),
+      sentAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
+      status: 'Delivered' as const,
+    };
+
+    setDirectMessages([newMsg, ...directMessages]);
+    setToastNotification(`Message dispatched to ${newMsg.recipientName}`);
+    setIsComposeOpen(false);
+    setComposeSubject('');
+    setComposeBody('');
+    setTimeout(() => setToastNotification(null), 3500);
+  };
 
   // Handle STK Push
   const handleInitiateStk = (e: React.FormEvent) => {
@@ -717,12 +799,59 @@ export const ParentPortalView: React.FC<ParentPortalViewProps> = ({
                 </p>
               </div>
 
-              <div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
-                <span className="text-slate-500 block mb-0.5">Primary Emergency Contact</span>
-                <strong className="text-slate-900 font-bold">{activeChild.guardianName}</strong>
-                <div className="text-slate-600 mt-0.5 flex items-center gap-2">
-                  <Phone className="w-3.5 h-3.5" />
-                  <span>{activeChild.guardianPhone}</span>
+              {/* Dual Parents / Guardians Emergency Contacts */}
+              <div className="space-y-3">
+                <div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-800">
+                      Parent / Guardian 1 (Primary)
+                    </span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-semibold">
+                      Mother / Custodial
+                    </span>
+                  </div>
+                  <strong className="text-slate-900 font-bold block">{activeChild.guardianName}</strong>
+                  <div className="text-slate-600 mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                    <span className="flex items-center gap-1.5">
+                      <Phone className="w-3.5 h-3.5 text-emerald-600" />
+                      {activeChild.guardianPhone}
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <Mail className="w-3.5 h-3.5 text-slate-400" />
+                      {activeChild.guardianPhone.replace(/\D/g, '').slice(-6)}@parent.limuru.ac.ke
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-sky-800">
+                      Parent / Guardian 2 (Secondary)
+                    </span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-100 text-sky-800 font-semibold">
+                      {activeChild.secondGuardianRelationship || 'Father'}
+                    </span>
+                  </div>
+                  <strong className="text-slate-900 font-bold block">
+                    {activeChild.secondGuardianName || 'Mr. David Omondi'}
+                  </strong>
+                  <div className="text-slate-600 mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                    <span className="flex items-center gap-1.5">
+                      <Phone className="w-3.5 h-3.5 text-sky-600" />
+                      {activeChild.secondGuardianPhone || '0722334455'}
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <Mail className="w-3.5 h-3.5 text-slate-400" />
+                      {activeChild.secondGuardianEmail || 'david.omondi@parents.limuru.ac.ke'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-2.5 rounded-lg bg-emerald-50/70 border border-emerald-200 text-[11px] text-emerald-900 flex items-center gap-2">
+                  <Users className="w-4 h-4 text-emerald-700 shrink-0" />
+                  <span>
+                    Dual-guardian synchronization active: all report cards, SMS, and fee updates are copied to both parents automatically.
+                  </span>
                 </div>
               </div>
             </div>
@@ -750,41 +879,215 @@ export const ParentPortalView: React.FC<ParentPortalViewProps> = ({
       )}
 
       {/* =========================================================================
-          SUB-TAB 5: SCHOOL SMS INBOX
+          SUB-TAB 5: TWO-WAY PARENT & SCHOOL COMMUNICATION HUB
           ========================================================================= */}
       {parentSubTab === 'messages' && (
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-              <Radio className="w-4 h-4 text-emerald-600" />
-              Official SMS Notifications Received
-            </h3>
-            <span className="text-xs text-slate-500 font-mono">Sender: LIMURUSCH</span>
+        <div className="space-y-6">
+          {/* Header & Sub-Toggle */}
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <MessageSquare className="w-4 h-4 text-emerald-600" />
+                Parent-School Communication Hub
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Two-way secure messaging with teachers, school administration, and dual-parent broadcasts.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsComposeOpen(true)}
+                className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors"
+              >
+                <Send className="w-3.5 h-3.5" />
+                Compose New Message
+              </button>
+            </div>
           </div>
 
-          <div className="divide-y divide-slate-100 border border-slate-200 rounded-lg overflow-hidden text-xs">
-            {childMessages.map((msg) => (
-              <div key={msg.id} className="p-4 bg-white hover:bg-slate-50/60 transition-colors space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-slate-900 flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                    {msg.type}
-                  </span>
-                  <span className="text-[11px] text-slate-400 font-mono">{msg.timestamp}</span>
+          {/* Toast Notification */}
+          {toastNotification && (
+            <div className="p-3 bg-emerald-900 text-white text-xs font-semibold rounded-lg shadow-sm flex items-center justify-between animate-in fade-in">
+              <span className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                {toastNotification}
+              </span>
+              <button onClick={() => setToastNotification(null)} className="text-emerald-300 hover:text-white">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          {/* Section: Direct 2-Way Messages */}
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs space-y-4">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-2">
+                <Send className="w-3.5 h-3.5 text-emerald-600" />
+                Direct Inquiries & Feedback ({directMessages.length})
+              </h4>
+              <span className="text-[11px] text-slate-400">Scoped to learner: {activeChild.name}</span>
+            </div>
+
+            <div className="space-y-3">
+              {directMessages.map((dm) => (
+                <div key={dm.id} className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-slate-50 transition-colors space-y-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                        {dm.recipientCategory}
+                      </span>
+                      <strong className="text-xs text-slate-900">{dm.recipientName}</strong>
+                    </div>
+                    <div className="flex items-center gap-2 text-[11px] text-slate-400">
+                      <span>{dm.sentAt}</span>
+                      <span className="px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 font-semibold text-[10px]">
+                        {dm.status}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-xs font-semibold text-slate-800">{dm.subject}</div>
+                  <p className="text-xs text-slate-600 bg-white p-3 rounded-lg border border-slate-200 leading-relaxed">
+                    {dm.body}
+                  </p>
                 </div>
-                <p className="text-slate-700 bg-slate-50 p-3 rounded-lg border border-slate-200 font-mono text-[11px] leading-relaxed">
-                  {msg.message}
-                </p>
-                <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1">
-                  <span>Target: {msg.targetGrade}</span>
-                  <span className="text-emerald-700 font-semibold flex items-center gap-1">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    Delivered to {currentUser.phone}
-                  </span>
+              ))}
+            </div>
+          </div>
+
+          {/* Section: Official SMS Broadcasts */}
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs space-y-4">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-2">
+                <Radio className="w-3.5 h-3.5 text-emerald-600" />
+                Official School SMS Broadcasts (LIMURUSCH)
+              </h4>
+              <span className="text-[11px] text-emerald-700 font-semibold flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                Synchronized to both parents
+              </span>
+            </div>
+
+            <div className="divide-y divide-slate-100 border border-slate-200 rounded-lg overflow-hidden text-xs">
+              {childMessages.map((msg) => (
+                <div key={msg.id} className="p-4 bg-white hover:bg-slate-50/60 transition-colors space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-900 flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                      {msg.type}
+                    </span>
+                    <span className="text-[11px] text-slate-400 font-mono">{msg.timestamp}</span>
+                  </div>
+                  <p className="text-slate-700 bg-slate-50 p-3 rounded-lg border border-slate-200 font-mono text-[11px] leading-relaxed">
+                    {msg.message}
+                  </p>
+                  <div className="flex flex-wrap items-center justify-between text-[11px] text-slate-400 pt-1 gap-2">
+                    <span>Target: {msg.targetGrade}</span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-emerald-700 font-semibold flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" />
+                        P1: {activeChild.guardianPhone}
+                      </span>
+                      <span className="text-sky-700 font-semibold flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" />
+                        P2: {activeChild.secondGuardianPhone || '0722334455'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Compose Direct Message Modal */}
+          {isComposeOpen && (
+            <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+              <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-lg w-full p-6 animate-in zoom-in-95">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+                  <div className="flex items-center gap-2">
+                    <Send className="w-4 h-4 text-emerald-700" />
+                    <h3 className="text-sm font-bold text-slate-900">Send Direct Message to School</h3>
+                  </div>
+                  <button
+                    onClick={() => setIsComposeOpen(false)}
+                    className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="mt-4 space-y-4 text-xs">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Recipient Department / Role</label>
+                    <select
+                      value={composeRecipient}
+                      onChange={(e) => setComposeRecipient(e.target.value as any)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-800 bg-white focus:ring-2 focus:ring-emerald-500 font-medium"
+                    >
+                      <option value="Class Teacher">Class Teacher (Mr. Patrick Wanjala)</option>
+                      <option value="Head Teacher / Principal">Head Teacher / Principal (Dr. Anthony K. Macharia)</option>
+                      <option value="Administration & Accounts">Administration & Accounts / Bursar</option>
+                      <option value="School Nurse">School Nurse & Dispensary (Sister Beatrice)</option>
+                      <option value="Both Parents / Broadcast">Broadcast to Both Parents / Guardians</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Regarding Learner</label>
+                    <input
+                      type="text"
+                      disabled
+                      value={`${activeChild.name} (${activeChild.admissionNo} · ${activeChild.grade})`}
+                      className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-lg text-slate-600 font-medium"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Subject</label>
+                    <input
+                      type="text"
+                      value={composeSubject}
+                      onChange={(e) => setComposeSubject(e.target.value)}
+                      placeholder="e.g., Request for Mid-Term Academic Progress Consult"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-emerald-500 font-medium"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Message Body</label>
+                    <textarea
+                      rows={4}
+                      value={composeBody}
+                      onChange={(e) => setComposeBody(e.target.value)}
+                      placeholder="Type your message or inquiry here..."
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+
+                  <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-[11px] text-slate-500">
+                    Replies will appear in your portal inbox and generate an instant SMS alert to <strong>{currentUser.phone}</strong>.
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                    <button
+                      onClick={() => setIsComposeOpen(false)}
+                      className="px-3.5 py-2 border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-100 font-semibold"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleSendDirectMessage}
+                      disabled={!composeSubject.trim() || !composeBody.trim()}
+                      className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white rounded-lg font-semibold flex items-center gap-1.5"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      Dispatch Message
+                    </button>
+                  </div>
                 </div>
               </div>
-            ))}
-          </div>
+            </div>
+          )}
         </div>
       )}
     </div>

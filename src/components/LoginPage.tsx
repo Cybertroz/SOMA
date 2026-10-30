@@ -69,7 +69,7 @@ export const LoginPage: React.FC = () => {
       setEmail('parent@limuru.ac.ke');
       setPassword('Parent@2026');
     } else if (role === 'moe_official') {
-      setEmail('moe.inspector@education.go.ke');
+      setEmail('belio.kipsang@education.go.ke');
       setPassword('Moe@2026');
     }
   };
@@ -344,8 +344,8 @@ export const LoginPage: React.FC = () => {
                   onClick={() => handleRoleQuickSelect('moe_official')}
                   className="p-1.5 rounded hover:bg-amber-950/40 cursor-pointer flex justify-between items-center transition-colors border border-transparent hover:border-amber-500/50"
                 >
-                  <span className="text-amber-300 font-bold">Ministry Official:</span>
-                  <span className="text-amber-200">moe.inspector@education.go.ke / Moe@2026</span>
+                  <span className="text-amber-300 font-bold">Ministry (Dr. Belio Kipsang):</span>
+                  <span className="text-amber-200">belio.kipsang@education.go.ke / Moe@2026</span>
                 </div>
               </div>
             )}

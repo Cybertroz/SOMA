@@ -92,6 +92,7 @@ import { exportToExcel } from '../utils/excelExport';
 import { MoeStatutoryReportsView } from './MoeStatutoryReportsView';
 import { MoeSigningSettingsView } from './MoeSigningSettingsView';
 import { MoeExecutiveDirectiveAuditsView } from './MoeExecutiveDirectiveAuditsView';
+import { MoeApprovalsModule } from './MoeApprovalsModule';
 
 interface Props {
   currentUser: AuthUser;
@@ -296,6 +297,7 @@ export function MinistryOfEducationOversightModule({
     | 'statutory-reports'
     | 'executive-audits'
     | 'exams'
+    | 'approvals'
     | 'signing-settings'
     | 'security';
 
@@ -1033,6 +1035,23 @@ export function MinistryOfEducationOversightModule({
             {t.sidebarAdmin}
           </div>
           <button
+            onClick={() => setActiveSidebarTab('approvals')}
+            className={`w-full px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-between ${
+              activeSidebarTab === 'approvals'
+                ? 'bg-emerald-800 text-white shadow-xs'
+                : 'text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-950'
+            }`}
+          >
+            <span className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              <span>Approvals & Workflows</span>
+            </span>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500 text-slate-950">
+              New
+            </span>
+          </button>
+
+          <button
             onClick={() => setActiveSidebarTab('signing-settings')}
             className={`w-full px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
               activeSidebarTab === 'signing-settings'
@@ -1613,6 +1632,14 @@ export function MinistryOfEducationOversightModule({
                 </table>
               </div>
             </div>
+          )}
+
+          {/* TAB: APPROVALS & WORKFLOWS */}
+          {activeSidebarTab === 'approvals' && (
+            <MoeApprovalsModule
+              currentUser={currentUser}
+              onLogAudit={onLogAudit}
+            />
           )}
 
           {/* TAB 10: SECURITY AUDIT LEDGER */}

@@ -69,13 +69,13 @@ export const SYSTEM_USERS: AuthUser[] = [
   {
     id: 'user_moe_director',
     uuid: 'usr-c39f1e1a-82dc-4682-bb3a-18b0c8f1e8a2',
-    name: 'Dr. Belio Kipsang / Beatrice Lukalo',
+    name: 'Dr. Belio Kipsang, CBS',
     role: 'moe_director',
-    title: 'County Director of Education (CDE) - Kiambu & National Inspector',
+    title: 'Principal Secretary / County Director of Education Oversight',
     department: 'Ministry of Education · State Department for Basic Education',
-    email: 'cde.kiambu@education.go.ke',
+    email: 'belio.kipsang@education.go.ke',
     phone: '+254 719 042 001',
-    avatarInitials: 'MOE',
+    avatarInitials: 'BK',
   },
 ];
 
@@ -107,6 +107,8 @@ export const ROLE_CONFIGS: Record<UserRole, RolePermissionConfig> = {
       'report-card',
       'tpad',
       'school-moe-returns',
+      'user-management',
+      'administration',
       'audit-logs',
       'parent-portal-preview',
     ],

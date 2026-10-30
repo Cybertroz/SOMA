@@ -139,6 +139,7 @@ import { PrintPreviewProvider, usePrintPreview } from './context/PrintPreviewCon
 import { PrintPreviewModal } from './components/PrintPreviewModal';
 import { LoginPage } from './components/LoginPage';
 import { UserManagementModule } from './components/UserManagementModule';
+import { SchoolAdministrationModule } from './components/SchoolAdministrationModule';
 import { FirebaseStatusBanner } from './components/FirebaseStatusBanner';
 import { FileUploadZone } from './components/FileUploadZone';
 import {
@@ -232,6 +233,7 @@ function SchoolApp() {
     | 'tpad'
     | 'school-moe-returns'
     | 'user-management'
+    | 'administration'
     | 'audit-logs';
 
   const SCHOOL_SIDEBAR_GROUPS = [
@@ -254,7 +256,7 @@ function SchoolApp() {
       ],
     },
     {
-      name: 'Money',
+      name: 'Finance',
       items: [
         { id: 'fees' as const, label: 'Fee Ledger', icon: CreditCard },
         { id: 'daraja' as const, label: 'M-Pesa Daraja Sync', icon: Smartphone },
@@ -265,6 +267,7 @@ function SchoolApp() {
     {
       name: 'Operations',
       items: [
+        { id: 'administration' as const, label: 'Administration', icon: Building2 },
         { id: 'user-management' as const, label: 'User Management', icon: Users },
         { id: 'teachers' as const, label: 'Teachers & Faculty', icon: UserCheck },
         { id: 'fleet' as const, label: 'Fleet & Fuel Logistics', icon: Truck },
@@ -2696,6 +2699,16 @@ function SchoolApp() {
         {/* VIEW 23: USER MANAGEMENT MODULE (HEAD TEACHER ONLY) */}
         {activeTab === 'user-management' && (
           <UserManagementModule />
+        )}
+
+        {/* VIEW 24: SCHOOL ADMINISTRATION MODULE (BRANCHES, USERS & PAYROLL/TPAD, ROLES) */}
+        {activeTab === 'administration' && (
+          <SchoolAdministrationModule
+            currentUser={currentUser}
+            payrollEmployees={payrollEmployees}
+            onAddPayrollEmployee={(emp) => setPayrollEmployees((prev) => [emp, ...prev])}
+            onLogAudit={handleLogAudit}
+          />
         )}
             </div>
           </div>

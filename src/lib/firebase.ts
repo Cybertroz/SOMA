@@ -225,4 +225,17 @@ export const DEFAULT_DEMO_USERS: Record<string, { profile: UserProfile; password
     },
     password: 'Moe@2026',
   },
+  'belio.kipsang@education.go.ke': {
+    profile: {
+      uid: 'usr-c39f1e1a-82dc-4682-bb3a-18b0c8f1e8a2',
+      fullName: 'Dr. Belio Kipsang, CBS',
+      email: 'belio.kipsang@education.go.ke',
+      role: 'moe_official',
+      active: true,
+      createdAt: '2026-01-01T08:00:00.000Z',
+      department: 'Ministry of Education · State Department for Basic Education',
+      phone: '+254 719 042 001',
+    },
+    password: 'Moe@2026',
+  },
 };
