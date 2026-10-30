@@ -45,10 +45,14 @@ import {
   HelpCircle,
   Clock,
   ChevronDown,
+  ChevronUp,
   Globe,
   FileSpreadsheet,
   Edit,
   Trash2,
+  MoreHorizontal,
+  CheckSquare,
+  Square,
 } from 'lucide-react';
 import {
   AuthUser,
@@ -89,10 +93,15 @@ import {
   INITIAL_PRIORITY_ACTION_ITEMS,
 } from '../data/mockExecutiveAuditData';
 import { exportToExcel } from '../utils/excelExport';
+import { formatCurrencyKES } from '../utils/formatters';
 import { MoeStatutoryReportsView } from './MoeStatutoryReportsView';
 import { MoeSigningSettingsView } from './MoeSigningSettingsView';
 import { MoeExecutiveDirectiveAuditsView } from './MoeExecutiveDirectiveAuditsView';
 import { MoeApprovalsModule } from './MoeApprovalsModule';
+import { KiambuSubCountyHeatmap } from './KiambuSubCountyHeatmap';
+import { MoeInlineTransferApprovalModal } from './MoeInlineTransferApprovalModal';
+import { MoeSchoolFreezeModal } from './MoeSchoolFreezeModal';
+import { MoeAuditTrailModal, MoeAuditEntry, INITIAL_MOE_AUDIT_TRAIL } from './MoeAuditTrailModal';
 
 interface Props {
   currentUser: AuthUser;
@@ -334,8 +343,29 @@ export function MinistryOfEducationOversightModule({
 
   // Transfer Inline Review Panel State
   const [isTransferPanelOpen, setIsTransferPanelOpen] = useState(false);
+  const [activeTransferForModal, setActiveTransferForModal] = useState<MoeTransferApproval | null>(null);
   const [rejectingTransferId, setRejectingTransferId] = useState<string | null>(null);
   const [rejectionComment, setRejectionComment] = useState('');
+
+  // More Actions Menu State
+  const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
+
+  // Audit Trail State & Modal
+  const [isAuditTrailOpen, setIsAuditTrailOpen] = useState(false);
+  const [auditTrail, setAuditTrail] = useState<MoeAuditEntry[]>(() => {
+    const s = localStorage.getItem('limuru_moe_audit_trail');
+    return s ? JSON.parse(s) : INITIAL_MOE_AUDIT_TRAIL;
+  });
+
+  // Bulk Selection on Schools Table
+  const [selectedSchoolIds, setSelectedSchoolIds] = useState<Set<string>>(new Set());
+
+  // Sorting & Pagination
+  const [sortField, setSortField] = useState<'name' | 'subCounty' | 'enrolledLearners' | 'capitation' | 'complianceScore'>('name');
+  const [sortAsc, setSortAsc] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 8;
+  const [activeRowMenuId, setActiveRowMenuId] = useState<string | null>(null);
 
   // My Tasks Bell Dropdown State
   const [isTasksOpen, setIsTasksOpen] = useState(false);
@@ -539,11 +569,10 @@ export function MinistryOfEducationOversightModule({
     });
   }, [schools, schoolSearch, schoolCategoryFilter, selectedSubCountyFilter]);
 
-  // Handle Freezing a School
-  const handleExecuteFreeze = () => {
-    if (!schoolToFreeze) return;
+  // Handle Freezing a School with Mandatory Statutory Reason
+  const handleConfirmFreezeWithReason = (targetSchool: KiambuSchoolRecord, reason: string, category: string) => {
     const updated = schools.map((s) =>
-      s.id === schoolToFreeze.id
+      s.id === targetSchool.id
         ? {
             ...s,
             accreditationStatus: 'Operations Frozen (MoE Mandate)' as any,
@@ -553,14 +582,101 @@ export function MinistryOfEducationOversightModule({
     );
     setSchools(updated);
     localStorage.setItem('limuru_moe_schools_registry', JSON.stringify(updated));
-    showToast(`Operations frozen for ${schoolToFreeze.name}. SCDE gazetted.`);
+
+    // Append to audit trail
+    const newEntry: MoeAuditEntry = {
+      id: `aud_m_${Date.now()}`,
+      timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19),
+      action: 'FREEZE',
+      targetSchool: targetSchool.name,
+      centerCode: targetSchool.centerCode,
+      performedBy: currentUser.name,
+      role: 'Director of Education',
+      reason,
+    };
+    const updatedTrail = [newEntry, ...auditTrail];
+    setAuditTrail(updatedTrail);
+    localStorage.setItem('limuru_moe_audit_trail', JSON.stringify(updatedTrail));
+
+    showToast(`Sanction enforced: ${targetSchool.name} frozen. Reason: ${category}`);
     onLogAudit(
       'MOE_SCHOOL_APPROVAL',
-      `School Freeze (${schoolToFreeze.centerCode})`,
-      `Statutory freeze placed on ${schoolToFreeze.name} by ${currentUser.name}. Capitation and transfers blocked.`,
+      `School Freeze (${targetSchool.centerCode})`,
+      `Statutory freeze placed on ${targetSchool.name} by ${currentUser.name}. Reason: ${reason}.`,
       'Restricted'
     );
     setSchoolToFreeze(null);
+  };
+
+  // Sorted and Paginated Schools
+  const { paginated: displayedSchools, totalCount: totalFilteredSchools, totalPages } = useMemo(() => {
+    const sorted = [...filteredSchools].sort((a, b) => {
+      let valA: any = a.name;
+      let valB: any = b.name;
+
+      if (sortField === 'name') {
+        valA = a.name;
+        valB = b.name;
+      } else if (sortField === 'subCounty') {
+        valA = a.subCounty;
+        valB = b.subCounty;
+      } else if (sortField === 'enrolledLearners') {
+        valA = a.enrolledLearners;
+        valB = b.enrolledLearners;
+      } else if (sortField === 'capitation') {
+        valA = a.fpeFdjseCapitationTerm1;
+        valB = b.fpeFdjseCapitationTerm1;
+      } else if (sortField === 'complianceScore') {
+        valA = a.complianceScore;
+        valB = b.complianceScore;
+      }
+
+      if (valA < valB) return sortAsc ? -1 : 1;
+      if (valA > valB) return sortAsc ? 1 : -1;
+      return 0;
+    });
+
+    const calculatedTotalPages = Math.ceil(sorted.length / pageSize) || 1;
+    const startIndex = (currentPage - 1) * pageSize;
+    const paginated = sorted.slice(startIndex, startIndex + pageSize);
+
+    return { paginated, totalCount: sorted.length, totalPages: calculatedTotalPages };
+  }, [filteredSchools, sortField, sortAsc, currentPage, pageSize]);
+
+  // Bulk Selection Helpers
+  const handleToggleSelectAll = () => {
+    if (selectedSchoolIds.size === displayedSchools.length) {
+      setSelectedSchoolIds(new Set());
+    } else {
+      setSelectedSchoolIds(new Set(displayedSchools.map((s) => s.id)));
+    }
+  };
+
+  const handleToggleSelectSchool = (schoolId: string) => {
+    const next = new Set(selectedSchoolIds);
+    if (next.has(schoolId)) {
+      next.delete(schoolId);
+    } else {
+      next.add(schoolId);
+    }
+    setSelectedSchoolIds(next);
+  };
+
+  const handleBulkExport = () => {
+    const selected = schools.filter((s) => selectedSchoolIds.has(s.id));
+    if (selected.length === 0) return;
+    exportToExcel(
+      'Selected_Kiambu_Schools_Oversight',
+      selected,
+      [
+        { header: 'Center Code', key: 'centerCode' },
+        { header: 'School Name', key: 'name' },
+        { header: 'Sub-County', key: 'subCounty' },
+        { header: 'Enrolled', key: 'enrolledLearners' },
+        { header: 'Compliance', key: (s) => `${s.complianceScore}%` },
+      ]
+    );
+    showToast(`Exported ${selected.length} selected schools to Excel.`);
   };
 
   // Sign Key Unlock Handler
