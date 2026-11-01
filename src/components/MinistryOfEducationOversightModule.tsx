@@ -1396,68 +1396,15 @@ export function MinistryOfEducationOversightModule({
 
           {/* TAB 2: INTERACTIVE SUB-COUNTY MAP */}
           {activeSidebarTab === 'subcounty-map' && (
-            <div className={`p-6 rounded-2xl border space-y-6 ${
-              isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
-            }`}>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-bold flex items-center gap-2">
-                    <MapPin className="w-5 h-5 text-emerald-600" />
-                    <span>Interactive Map of Kiambu County Sub-Counties</span>
-                  </h2>
-                  <p className="text-xs text-slate-500">
-                    Click any sub-county to filter schools and inspect regional capitation distribution.
-                  </p>
-                </div>
-                {selectedSubCountyFilter !== 'All' && (
-                  <button
-                    onClick={() => setSelectedSubCountyFilter('All')}
-                    className="px-3 py-1 bg-slate-200 dark:bg-slate-800 rounded-lg text-xs font-bold hover:bg-slate-300"
-                  >
-                    Reset Filter ({selectedSubCountyFilter})
-                  </button>
-                )}
-              </div>
-
-              {/* Sub-Counties Grid Visual Map */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-                {subCountiesMapData.map((sc) => {
-                  const isSelected = selectedSubCountyFilter === sc.name;
-                  return (
-                    <button
-                      key={sc.name}
-                      onClick={() => {
-                        setSelectedSubCountyFilter(isSelected ? 'All' : sc.name);
-                        setActiveSidebarTab('schools');
-                        showToast(`Filtered schools by ${sc.name} Sub-County`);
-                      }}
-                      className={`p-4 rounded-xl border text-left transition-all hover:scale-[1.02] cursor-pointer ${
-                        isSelected
-                          ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950/60 ring-2 ring-emerald-500 shadow-xs'
-                          : isDarkMode
-                          ? 'border-slate-800 bg-slate-800/40 hover:border-slate-700'
-                          : 'border-slate-300 bg-white hover:border-emerald-500 shadow-2xs'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="font-black text-sm text-slate-950 dark:text-white">{sc.name}</span>
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
-                          sc.status === 'Needs Review'
-                            ? 'bg-amber-100 text-amber-950 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-700'
-                            : 'bg-emerald-100 text-emerald-950 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-700'
-                        }`}>
-                          {sc.status}
-                        </span>
-                      </div>
-                      <div className="text-xs text-slate-600 dark:text-slate-400 mt-2 space-y-0.5 font-mono">
-                        <div>Institutions: <strong className="text-slate-950 dark:text-white font-bold">{sc.schoolsCount}</strong></div>
-                        <div>Learners: <strong className="text-slate-950 dark:text-white font-bold">{sc.learners.toLocaleString()}</strong></div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+            <KiambuSubCountyHeatmap
+              selectedSubCounty={selectedSubCountyFilter}
+              onSelectSubCounty={(sc) => {
+                setSelectedSubCountyFilter(sc);
+                setActiveSidebarTab('schools');
+                showToast(`Filtered schools by ${sc} Sub-County`);
+              }}
+              isDarkMode={isDarkMode}
+            />
           )}
 
           {/* TAB 3: DIRECTIVES TRACKING */}
@@ -1994,46 +1941,48 @@ export function MinistryOfEducationOversightModule({
         </div>
       )}
 
+
+
       {/* =========================================================================
-          MODAL 3: FREEZE INSTITUTION CONFIRMATION DIALOG (RED BUTTON)
+          MODAL 3: FREEZE INSTITUTION CONFIRMATION DIALOG
           ========================================================================= */}
-      {schoolToFreeze && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full shadow-2xl border-2 border-rose-500 p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center gap-3 text-rose-600">
-              <ShieldAlert className="w-8 h-8 shrink-0" />
-              <div>
-                <h3 className="font-bold text-base text-slate-900 dark:text-slate-100">
-                  {t.freezeConfirmTitle}
-                </h3>
-                <span className="text-xs text-rose-700 font-bold block">{schoolToFreeze.name}</span>
-              </div>
-            </div>
-
-            <p className="text-xs text-slate-700 dark:text-slate-300 font-medium leading-relaxed">
-              {t.freezeWarning}
-            </p>
-
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
-              <button
-                onClick={() => setSchoolToFreeze(null)}
-                className="px-4 py-2 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
-              >
-                {t.cancel}
-              </button>
-              <button
-                onClick={handleExecuteFreeze}
-                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-black shadow-md"
-              >
-                {t.confirmFreeze}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <MoeSchoolFreezeModal
+        school={schoolToFreeze}
+        isOpen={!!schoolToFreeze}
+        onClose={() => setSchoolToFreeze(null)}
+        onConfirmFreeze={handleConfirmFreezeWithReason}
+        officerName={currentUser.name}
+      />
 
       {/* =========================================================================
-          MODAL 4: SIGN KEY ENTRY / PASSKEY AUTHENTICATION GATE
+          MODAL 4: INLINE TRANSFER APPROVAL DIALOG
+          ========================================================================= */}
+      <MoeInlineTransferApprovalModal
+        transfer={activeTransferForModal}
+        isOpen={!!activeTransferForModal}
+        onClose={() => setActiveTransferForModal(null)}
+        onApprove={(id, name) => {
+          onApproveTransfer(id, name);
+          showToast('Approved transfer on NEMIS.');
+        }}
+        onReject={(id, reason) => {
+          onRejectTransfer(id, reason);
+          showToast('Rejected transfer request.');
+        }}
+        reviewerName={currentUser.name}
+      />
+
+      {/* =========================================================================
+          MODAL 5: AUDIT TRAIL LEDGER MODAL
+          ========================================================================= */}
+      <MoeAuditTrailModal
+        isOpen={isAuditTrailOpen}
+        onClose={() => setIsAuditTrailOpen(false)}
+        auditEntries={auditTrail}
+      />
+
+      {/* =========================================================================
+          MODAL 6: SIGN KEY ENTRY / PASSKEY AUTHENTICATION GATE
           ========================================================================= */}
       {isSignKeyModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4">

@@ -48,8 +48,12 @@ import {
   Check,
   LogOut,
   Receipt,
+  Command,
 } from 'lucide-react';
 import { SchoolPlatformDashboard } from './components/SchoolPlatformDashboard';
+import { CommandPaletteModal } from './components/CommandPaletteModal';
+import { CbcQuickAssessmentModal } from './components/CbcQuickAssessmentModal';
+import { generateFullInstitutionalLearners } from './data/mockLearnersGenerator';
 
 import {
   Learner,
@@ -140,6 +144,7 @@ import { PrintPreviewModal } from './components/PrintPreviewModal';
 import { LoginPage } from './components/LoginPage';
 import { UserManagementModule } from './components/UserManagementModule';
 import { SchoolAdministrationModule } from './components/SchoolAdministrationModule';
+import { SomaTeacherAssignmentPortal } from './components/SomaTeacherAssignmentPortal';
 import { FirebaseStatusBanner } from './components/FirebaseStatusBanner';
 import { FileUploadZone } from './components/FileUploadZone';
 import {
@@ -234,7 +239,8 @@ function SchoolApp() {
     | 'school-moe-returns'
     | 'user-management'
     | 'administration'
-    | 'audit-logs';
+    | 'audit-logs'
+    | 'soma-portal';
 
   const SCHOOL_SIDEBAR_GROUPS = [
     {
@@ -249,6 +255,7 @@ function SchoolApp() {
       name: 'Learning',
       items: [
         { id: 'cbc' as const, label: 'CBC Tracking', icon: Award },
+        { id: 'soma-portal' as const, label: 'Soma e-Dairy & Assignments', icon: BookOpen },
         { id: 'admissions' as const, label: 'Grade 1-9 Registry', icon: Users },
         { id: 'analytics' as const, label: 'KNEC Analytics', icon: Award },
         { id: 'portfolios' as const, label: 'Health & Portfolios', icon: HeartPulse },
@@ -484,7 +491,15 @@ function SchoolApp() {
   // Core Data States with localStorage persistence
   const [learners, setLearners] = useState<Learner[]>(() => {
     const saved = localStorage.getItem('limuru_model_learners');
-    return saved ? JSON.parse(saved) : INITIAL_LEARNERS;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length >= 50) return parsed;
+      } catch (e) {
+        // fallback
+      }
+    }
+    return generateFullInstitutionalLearners();
   });
 
   const [teachers, setTeachers] = useState<TeacherStaffRecord[]>(() => {
@@ -577,6 +592,8 @@ function SchoolApp() {
   });
 
   // Modal Visibility States
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [isCbcQuickAssessmentOpen, setIsCbcQuickAssessmentOpen] = useState(false);
   const [isAdmissionModalOpen, setIsAdmissionModalOpen] = useState(false);
   const [isBulkMarksheetOpen, setIsBulkMarksheetOpen] = useState(false);
   const [isExcelFeeModalOpen, setIsExcelFeeModalOpen] = useState(false);
@@ -1223,11 +1240,11 @@ function SchoolApp() {
       <FirebaseStatusBanner />
 
       {/* =========================================================================
-          TOP INSTITUTIONAL HEADER & BRANDING
+          TOP INSTITUTIONAL HEADER & BRANDING (SKY BLUE RIVA ANIMATED INTERACTIVE STYLE)
           ========================================================================= */}
-      <header className="no-print sticky top-0 z-40 bg-gradient-to-r from-emerald-950 via-emerald-900 to-teal-950 border-b border-emerald-800 shadow-md text-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+      <header className="no-print sticky top-0 z-40 bg-gradient-to-r from-sky-700 via-sky-600 to-sky-800 dark:from-sky-950 dark:via-sky-900 dark:to-sky-950 border-b border-sky-400/40 shadow-xl text-white transition-all">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2.5">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-3">
             
             {/* Left Insignia Badge & Mobile Hamburger Menu */}
             <div className="flex items-center gap-2.5 shrink-0 self-start md:self-center">
@@ -1236,7 +1253,7 @@ function SchoolApp() {
                 <button
                   onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
                   title="Toggle Navigation Menu"
-                  className="lg:hidden p-2 text-white bg-emerald-800/80 hover:bg-emerald-700 rounded-lg transition-colors border border-emerald-600/60 flex items-center justify-center"
+                  className="lg:hidden p-2 text-white bg-sky-800/80 hover:bg-sky-700 rounded-xl transition-colors border border-sky-500/60 flex items-center justify-center active:scale-95"
                 >
                   {isMobileMenuOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
                 </button>
@@ -1244,156 +1261,100 @@ function SchoolApp() {
 
               {currentUser.role === 'moe_director' ? (
                 <div className="flex items-center gap-2">
-                  <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-400/50 text-amber-300 flex items-center justify-center font-bold shadow-xs">
+                  <div className="w-10 h-10 rounded-xl bg-sky-500/30 border border-sky-300/50 text-sky-100 flex items-center justify-center font-bold shadow-xs backdrop-blur-md">
                     <span className="text-xl">🇰🇪</span>
                   </div>
-                  <span className="hidden sm:inline-block px-2.5 py-0.5 text-[10px] font-bold rounded-full bg-amber-400 text-slate-950 font-mono uppercase tracking-wide">
+                  <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-0.5 text-[10px] font-bold rounded-full bg-sky-400/90 text-slate-950 font-mono uppercase tracking-wide shadow-xs">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-200 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-900"></span>
+                    </span>
                     GOV.KE
                   </span>
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 flex items-center justify-center font-bold shadow-xs">
-                    <School className="w-6 h-6 text-emerald-300" />
+                  <div className="w-10 h-10 rounded-xl bg-sky-500/30 border border-sky-300/50 text-sky-100 flex items-center justify-center font-bold shadow-xs backdrop-blur-md">
+                    <School className="w-6 h-6 text-sky-100" />
                   </div>
-                  <span className="hidden sm:inline-block px-2.5 py-0.5 text-[10px] font-bold rounded-full bg-emerald-400 text-slate-950 font-mono uppercase tracking-wide">
-                    CBC HUB
+                  <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-0.5 text-[10px] font-bold rounded-full bg-sky-300 text-slate-950 font-mono uppercase tracking-wide shadow-xs">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-600 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-900"></span>
+                    </span>
+                    RIVA CBC HUB
                   </span>
                 </div>
               )}
             </div>
 
-            {/* CENTERED MAJESTIC PROMINENT HEADING FOR MOE AND SCHOOL */}
+            {/* CENTERED SINGLE-LINE MAJESTIC RIVA LOGO & HEADING */}
             <div className="flex-1 flex flex-col items-center justify-center text-center px-2">
               {currentUser.role === 'moe_director' ? (
-                <>
-                  <div className="flex items-center justify-center gap-2.5 flex-wrap">
-                    <span className="text-xl sm:text-2xl drop-shadow-sm">🇰🇪</span>
-                    <h1 className="text-lg sm:text-2xl md:text-3xl font-black tracking-wider text-white uppercase drop-shadow-sm">
-                      REPUBLIC OF KENYA · MINISTRY OF EDUCATION
-                    </h1>
-                    <span className="text-xl sm:text-2xl drop-shadow-sm">🇰🇪</span>
-                    <span className="px-2.5 py-0.5 text-[10px] font-bold rounded-full bg-amber-400 text-slate-950 font-mono tracking-normal uppercase shadow-xs">
-                      State Oversight
-                    </span>
+                <div className="flex items-center justify-center gap-3">
+                  <div className="w-11 h-11 rounded-2xl bg-sky-500/30 border border-sky-300/60 text-sky-100 flex items-center justify-center font-bold shadow-md backdrop-blur-md">
+                    <span className="text-2xl">🇰🇪</span>
                   </div>
-                  <p className="text-xs sm:text-sm font-medium text-amber-200/90 tracking-wide mt-1">
-                    State Department for Basic Education · Kiambu County & National Oversight Directorate
-                  </p>
-                </>
+                  <div>
+                    <h1 className="text-base sm:text-xl md:text-2xl font-black tracking-wider text-white uppercase drop-shadow-sm flex items-center justify-center gap-2">
+                      <span>REPUBLIC OF KENYA · MINISTRY OF EDUCATION</span>
+                    </h1>
+                    <p className="text-[11px] font-semibold text-sky-100/90 tracking-wide mt-0.5">
+                      State Department for Basic Education · Kiambu County & National Oversight Directorate
+                    </p>
+                  </div>
+                </div>
               ) : (
-                <>
-                  <div className="flex items-center justify-center gap-2.5 flex-wrap">
-                    <School className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-400 shrink-0" />
-                    <h1 className="text-lg sm:text-2xl md:text-3xl font-black tracking-tight text-white uppercase drop-shadow-sm">
-                      LIMURU MODEL COMPREHENSIVE SCHOOL
-                    </h1>
-                    <span className="px-2.5 py-0.5 text-[10px] font-bold rounded-full bg-emerald-400 text-slate-950 font-mono tracking-normal uppercase shadow-xs">
-                      Center 20401823
-                    </span>
+                <div className="flex items-center justify-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-sky-500/30 border border-sky-300/60 text-sky-100 flex items-center justify-center font-bold shadow-md backdrop-blur-md shrink-0">
+                    <School className="w-7 h-7 text-sky-100" />
                   </div>
-                  <p className="text-xs sm:text-sm font-medium text-emerald-200/90 tracking-wide mt-1">
-                    Ministry of Education · Kiambu County · Grade 1 to 9 CBC & Senior Secondary Hub
-                  </p>
-                </>
+                  <div>
+                    <h1 className="text-base sm:text-xl md:text-2xl font-black tracking-tight text-white uppercase drop-shadow-sm flex items-center justify-center gap-2 flex-wrap">
+                      <span>LIMURU MODEL COMPREHENSIVE SCHOOL</span>
+                      <span className="px-2.5 py-0.5 text-[10px] font-bold rounded-full bg-sky-300 text-slate-950 font-mono tracking-normal uppercase shadow-xs">
+                        Center 20401823
+                      </span>
+                    </h1>
+                    <p className="text-[11px] font-semibold text-sky-100/90 tracking-wide mt-0.5">
+                      Ministry of Education · Kiambu County · Grade 1 to 9 CBC & Senior Secondary Hub
+                    </p>
+                  </div>
+                </div>
               )}
             </div>
 
-            {/* Quick Action Buttons & Controls */}
+            {/* Riva Micro-Interactive Controls & Logout / Role Switcher */}
             <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
               {/* Sound Chime Toggle */}
               <button
                 onClick={() => setSoundEnabled(!soundEnabled)}
                 title={soundEnabled ? 'Audio Chime Enabled' : 'Audio Muted'}
-                className="p-2 text-emerald-200 hover:text-white hover:bg-emerald-800/60 rounded-lg transition-colors border border-emerald-700/50"
+                className="p-2 text-sky-100 hover:text-white hover:bg-sky-500/30 rounded-xl transition-all border border-sky-400/40 backdrop-blur-md active:scale-95"
               >
-                {soundEnabled ? <Volume2 className="w-4 h-4 text-emerald-300" /> : <VolumeX className="w-4 h-4 text-slate-400" />}
+                {soundEnabled ? <Volume2 className="w-4 h-4 text-sky-200" /> : <VolumeX className="w-4 h-4 text-slate-300" />}
               </button>
 
               {/* Light / Dark Mode Toggle */}
               <button
                 onClick={() => setIsDarkMode(!isDarkMode)}
                 title={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-                className="p-2 text-emerald-200 hover:text-white hover:bg-emerald-800/60 rounded-lg transition-colors border border-emerald-700/50"
+                className="p-2 text-sky-100 hover:text-white hover:bg-sky-500/30 rounded-xl transition-all border border-sky-400/40 backdrop-blur-md active:scale-95"
               >
-                {isDarkMode ? <Sun className="w-4 h-4 text-amber-300" /> : <Moon className="w-4 h-4 text-emerald-200" />}
+                {isDarkMode ? <Sun className="w-4 h-4 text-amber-300" /> : <Moon className="w-4 h-4 text-sky-200" />}
               </button>
 
 
 
-              {/* 5 School Specific Action Buttons (For non-MoE roles) */}
-              {currentUser.role !== 'moe_director' && (
-                <>
-                  {/* Action 1: Admit Learner */}
-                  {hasPermission(currentUser.role, 'manage_admissions') && (
-                    <button
-                      onClick={() => {
-                        setIsAdmissionModalOpen(true);
-                        if (soundEnabled) playSound('click');
-                      }}
-                      className="px-3 py-1.5 text-xs font-semibold text-white bg-emerald-700 hover:bg-emerald-600 border border-emerald-500/50 rounded-lg shadow-xs transition-colors flex items-center gap-1.5"
-                      title="Admit new learner (Grades 1-9)"
-                    >
-                      <UserPlus className="w-3.5 h-3.5" />
-                      <span>Admit Learner</span>
-                    </button>
-                  )}
-
-                  {/* Action 2: Rename Classes */}
-                  <button
-                    onClick={() => {
-                      setIsClassRenameModalOpen(true);
-                      if (soundEnabled) playSound('click');
-                    }}
-                    className="px-3 py-1.5 text-xs font-semibold text-amber-200 bg-amber-950/70 hover:bg-amber-900 border border-amber-500/40 rounded-lg shadow-xs transition-colors flex items-center gap-1.5"
-                    title="Configure and rename school classes and streams"
-                  >
-                    <Layers className="w-3.5 h-3.5 text-amber-300" />
-                    <span>Rename Classes</span>
-                  </button>
-
-                  {/* Action 3: Upload Marksheet */}
-                  {hasPermission(currentUser.role, 'manage_cbc_marks') && (
-                    <button
-                      onClick={() => {
-                        marksheetFileInputRef.current?.click();
-                      }}
-                      className="hidden sm:flex px-3 py-1.5 text-xs font-semibold text-sky-100 bg-sky-900/80 hover:bg-sky-800 border border-sky-600/50 rounded-lg shadow-xs transition-colors items-center gap-1.5"
-                      title="Upload CBC Marksheet file"
-                    >
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>Upload Marksheet</span>
-                    </button>
-                  )}
-
-                  {/* Action 4: Add Fees via Excel */}
-                  {hasPermission(currentUser.role, 'manage_fees') && (
-                    <button
-                      onClick={() => {
-                        feeExcelFileInputRef.current?.click();
-                      }}
-                      className="px-3 py-1.5 text-xs font-semibold text-teal-100 bg-teal-800/80 hover:bg-teal-700 border border-teal-500/50 rounded-lg shadow-xs transition-colors flex items-center gap-1.5 whitespace-nowrap"
-                      title="Upload batch fee collections via Excel/CSV"
-                    >
-                      <FileSpreadsheet className="w-3.5 h-3.5" />
-                      <span>Add Fees via Excel</span>
-                    </button>
-                  )}
-
-                  {/* Action 5: Daraja API Gateway (Settings) */}
-                  <button
-                    onClick={() => {
-                      setActiveTab('daraja');
-                      if (soundEnabled) playSound('click');
-                    }}
-                    className="px-3 py-1.5 text-xs font-semibold text-emerald-200 bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/40 rounded-lg shadow-xs transition-colors flex items-center gap-1.5"
-                    title="Configure Safaricom Daraja API credentials in Settings"
-                  >
-                    <Smartphone className="w-3.5 h-3.5 text-emerald-300" />
-                    <span>Daraja API Gateway</span>
-                  </button>
-                </>
-              )}
+              {/* Global Command Palette Trigger Button (Ctrl/Cmd + K) */}
+              <button
+                onClick={() => setIsCommandPaletteOpen(true)}
+                className="px-2.5 py-1.5 text-xs font-semibold text-sky-200 bg-sky-950/80 hover:bg-sky-900 border border-sky-500/50 rounded-lg shadow-xs transition-colors flex items-center gap-1.5"
+                title="Global Search & Quick Actions (Ctrl/Cmd + K)"
+              >
+                <Command className="w-3.5 h-3.5 text-sky-300" />
+                <span className="hidden sm:inline font-mono text-[11px] font-bold">⌘K Search</span>
+              </button>
 
               {/* RBAC Persona Switcher Dropdown */}
               <RoleSwitcher
@@ -2397,12 +2358,12 @@ function SchoolApp() {
                               Core CBC Competencies Rating (1-5)
                             </div>
                             <div className="grid grid-cols-2 gap-2 text-[11px]">
-                              <div>Communication: <strong>{currentStudent.competencies.communication}/5</strong></div>
-                              <div>Critical Thinking: <strong>{currentStudent.competencies.criticalThinking}/5</strong></div>
-                              <div>Digital Literacy: <strong>{currentStudent.competencies.digitalLiteracy}/5</strong></div>
-                              <div>Citizenship: <strong>{currentStudent.competencies.citizenship}/5</strong></div>
-                              <div>Creativity: <strong>{currentStudent.competencies.creativity}/5</strong></div>
-                              <div>Self-Efficacy: <strong>{currentStudent.competencies.selfEfficacy}/5</strong></div>
+                              <div>Communication: <strong>{currentStudent?.competencies?.communication ?? 0}/5</strong></div>
+                              <div>Critical Thinking: <strong>{currentStudent?.competencies?.criticalThinking ?? 0}/5</strong></div>
+                              <div>Digital Literacy: <strong>{currentStudent?.competencies?.digitalLiteracy ?? 0}/5</strong></div>
+                              <div>Citizenship: <strong>{currentStudent?.competencies?.citizenship ?? 0}/5</strong></div>
+                              <div>Creativity: <strong>{currentStudent?.competencies?.creativity ?? 0}/5</strong></div>
+                              <div>Self-Efficacy: <strong>{currentStudent?.competencies?.selfEfficacy ?? 0}/5</strong></div>
                             </div>
                           </div>
 
@@ -2601,6 +2562,7 @@ function SchoolApp() {
             fuelLogs={fuelLogs}
             maintenanceRecords={maintenanceRecords}
             transportBookings={transportBookings}
+            busTripLogs={INITIAL_BUS_TRIP_LOGS}
             onAddFuelLog={handleAddFuelLog}
             onAddMaintenance={handleAddMaintenance}
             onLogAudit={handleLogAudit}
@@ -2707,6 +2669,16 @@ function SchoolApp() {
             currentUser={currentUser}
             payrollEmployees={payrollEmployees}
             onAddPayrollEmployee={(emp) => setPayrollEmployees((prev) => [emp, ...prev])}
+            onLogAudit={handleLogAudit}
+          />
+        )}
+
+        {/* VIEW 25: SOMA TEACHER ASSIGNMENT & E-DAIRY INTEGRATION PORTAL */}
+        {activeTab === 'soma-portal' && (
+          <SomaTeacherAssignmentPortal
+            isDarkMode={isDarkMode}
+            learners={learners}
+            onUpdateLearners={(updated) => setLearners(updated)}
             onLogAudit={handleLogAudit}
           />
         )}
@@ -2931,6 +2903,35 @@ function SchoolApp() {
       </div>
     </div>
   )}
+
+      {/* Global Command Palette Modal (Ctrl/Cmd + K) */}
+      <CommandPaletteModal
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        onSelectTab={(tab) => {
+          setActiveTab(tab);
+          if (soundEnabled) playSound('click');
+        }}
+        learners={learners}
+        schools={moeSchools}
+        isDarkMode={isDarkMode}
+        onToggleTheme={() => setIsDarkMode(!isDarkMode)}
+        onOpenAdmissions={() => setIsAdmissionModalOpen(true)}
+        onOpenAssessmentEntry={() => setIsCbcQuickAssessmentOpen(true)}
+      />
+
+      {/* Quick CBC Assessment Entry Modal */}
+      <CbcQuickAssessmentModal
+        isOpen={isCbcQuickAssessmentOpen}
+        onClose={() => setIsCbcQuickAssessmentOpen(false)}
+        learners={learners}
+        onSaveAssessment={(updated) => {
+          setLearners(updated);
+          localStorage.setItem('limuru_model_learners', JSON.stringify(updated));
+          setToastNotification('CBC Assessment marks updated and synced across classes.');
+          if (soundEnabled) playSound('success');
+        }}
+      />
 
       {/* Universal Print Preview Modal for All Reports */}
       <PrintPreviewModal />

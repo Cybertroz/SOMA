@@ -99,10 +99,10 @@ export function generateFullInstitutionalLearners(): Learner[] {
 
       // Assign NEMIS UPI: 748 verified, 36 unverified
       let nemisUpi = `UPI-${Math.floor(7000000 + (admCounter * 4321) % 2900000)}-${String.fromCharCode(65 + (admCounter % 26))}`;
-      let kemisStatus: 'Verified' | 'Pending Verification' | 'Discrepancy' = 'Verified';
+      let kemisStatus: 'Verified' | 'Pending Sync' | 'Flagged' = 'Verified';
       if (missingUpiCount < targetMissingUpi && (admCounter % 21 === 0 || i === 1)) {
         nemisUpi = '';
-        kemisStatus = 'Pending Verification';
+        kemisStatus = 'Pending Sync';
         missingUpiCount++;
       }
 
@@ -135,9 +135,11 @@ export function generateFullInstitutionalLearners(): Learner[] {
           status,
           voteheadBreakdown: {
             'Tuition & Learning Materials': { allocated: Math.round(termFee * 0.35), paid: Math.round(paidAmount * 0.35) },
-            'Operations & Maintenance': { allocated: Math.round(termFee * 0.25), paid: Math.round(paidAmount * 0.25) },
-            'Boarding & Meals': { allocated: Math.round(termFee * 0.25), paid: Math.round(paidAmount * 0.25) },
-            'Activity & Co-Curricular': { allocated: Math.round(termFee * 0.15), paid: Math.round(paidAmount * 0.15) },
+            'Operations & Maintenance': { allocated: Math.round(termFee * 0.20), paid: Math.round(paidAmount * 0.20) },
+            'Boarding & Meals': { allocated: Math.round(termFee * 0.20), paid: Math.round(paidAmount * 0.20) },
+            'Activity & Co-Curricular': { allocated: Math.round(termFee * 0.10), paid: Math.round(paidAmount * 0.10) },
+            'PTA Development': { allocated: Math.round(termFee * 0.08), paid: Math.round(paidAmount * 0.08) },
+            'Exam & Assessment': { allocated: Math.round(termFee * 0.07), paid: Math.round(paidAmount * 0.07) },
           },
           bursaryApplied: admCounter % 8 === 0 ? 5000 : 0,
           capitationReceived: gradeKey.startsWith('Grade 7') || gradeKey.startsWith('Grade 8') || gradeKey.startsWith('Grade 9') ? 4200 : 1420,

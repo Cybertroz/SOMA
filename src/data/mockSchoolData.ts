@@ -990,6 +990,18 @@ export const INITIAL_FUEL_LOGS: FuelLogEntry[] = [
   },
 ];
 
+export const INITIAL_BUS_TRIP_LOGS: BusTripLog[] = [
+  {
+    id: 'trip_01',
+    routeId: 'route_a',
+    vehicleId: 'veh_01',
+    driverName: 'Peter Njoroge Kimani',
+    startTime: '2026-11-01T06:15:00Z',
+    status: 'in-progress',
+    startLocation: { lat: -1.111, lng: 36.65 },
+  },
+];
+
 export const INITIAL_MAINTENANCE_RECORDS: VehicleMaintenanceRecord[] = [
   {
     id: 'vm_01',

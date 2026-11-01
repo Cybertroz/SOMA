@@ -394,19 +394,49 @@ export interface MoeCapitationDisbursement {
   status: 'Approved & Disbursed' | 'Awaiting CDE Sign-Off' | 'Flagged by Auditor';
 }
 
+export type ActiveTab =
+  | 'dashboard'
+  | 'admissions'
+  | 'cbc'
+  | 'fees'
+  | 'daraja'
+  | 'voteheads'
+  | 'sms'
+  | 'payroll'
+  | 'timetables'
+  | 'timetable'
+  | 'analytics'
+  | 'portfolios'
+  | 'assets'
+  | 'kitchen-inventory'
+  | 'textbooks-stationery'
+  | 'report-card'
+  | 'tpad'
+  | 'parent-portal'
+  | 'teachers'
+  | 'fleet'
+  | 'kemis'
+  | 'audit-logs'
+  | 'moe-oversight'
+  | 'administration'
+  | 'user-management';
+
 export interface MoeTransferApproval {
   id: string;
   studentName: string;
+  learnerName?: string;
   nemisUpi: string;
   grade: GradeLevel;
   fromSchoolName: string;
+  fromSchool?: string;
   fromCenterCode: string;
   toSchoolName: string;
+  toSchool?: string;
   toCenterCode: string;
-  reason: 'Parent Relocation' | 'Medical / Climate Needs' | 'Special Needs Placement' | 'Academic Talent Advancement';
+  reason: 'Parent Relocation' | 'Medical / Climate Needs' | 'Special Needs Placement' | 'Academic Talent Advancement' | string;
   subCounty: string;
   county: string;
-  status: 'Pending CDE Approval' | 'Approved by Ministry' | 'Rejected - Stream Capacity Exceeded';
+  status: 'Pending CDE Approval' | 'Approved by Ministry' | 'Rejected - Stream Capacity Exceeded' | string;
   nemisClearanceCertNo: string;
   submissionDate: string;
   reviewedBy?: string;
@@ -715,6 +745,19 @@ export interface BusRoute {
   distanceKmPerRoundTrip: number;
   monthlyFuelBudgetLiters: number;
   enrolledStudentsCount: number;
+}
+
+export interface BusTripLog {
+  id: string;
+  routeId: string;
+  vehicleId: string;
+  driverName: string;
+  startTime: string; // ISO string
+  endTime?: string; // ISO string
+  startLocation: { lat: number; lng: number };
+  endLocation?: { lat: number; lng: number };
+  routePath?: { lat: number; lng: number }[];
+  status: 'in-progress' | 'completed';
 }
 
 export interface FuelLogEntry {

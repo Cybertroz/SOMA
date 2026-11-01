@@ -111,6 +111,7 @@ export const ROLE_CONFIGS: Record<UserRole, RolePermissionConfig> = {
       'administration',
       'audit-logs',
       'parent-portal-preview',
+      'soma-portal',
     ],
     permissions: {
       view_dashboard: true,

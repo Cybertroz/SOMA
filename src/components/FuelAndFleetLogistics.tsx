@@ -28,12 +28,14 @@ import {
   FileSpreadsheet,
   Upload,
 } from 'lucide-react';
+import { APIProvider, Map, AdvancedMarker } from '@vis.gl/react-google-maps';
 import {
   FuelFleetVehicle,
   BusRoute,
   FuelLogEntry,
   VehicleMaintenanceRecord,
   StudentTransportBooking,
+  BusTripLog,
   AuthUser,
 } from '../types/school';
 import { exportToExcel } from '../utils/excelExport';
@@ -45,6 +47,7 @@ interface FuelAndFleetLogisticsProps {
   fuelLogs: FuelLogEntry[];
   maintenanceRecords: VehicleMaintenanceRecord[];
   transportBookings: StudentTransportBooking[];
+  busTripLogs: BusTripLog[];
   onAddFuelLog: (log: FuelLogEntry) => void;
   onAddMaintenance: (rec: VehicleMaintenanceRecord) => void;
   onLogAudit: (action: any, resource: string, details: string) => void;
@@ -57,11 +60,12 @@ export const FuelAndFleetLogistics: React.FC<FuelAndFleetLogisticsProps> = ({
   fuelLogs,
   maintenanceRecords,
   transportBookings,
+  busTripLogs,
   onAddFuelLog,
   onAddMaintenance,
   onLogAudit,
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'fuel' | 'vehicles' | 'routes' | 'maintenance' | 'roster'>('fuel');
+  const [activeSubTab, setActiveSubTab] = useState<'fuel' | 'vehicles' | 'routes' | 'maintenance' | 'roster' | 'trips'>('fuel');
 
   // New Fuel Refill Modal
   const [isFuelModalOpen, setIsFuelModalOpen] = useState(false);
@@ -402,6 +406,7 @@ export const FuelAndFleetLogistics: React.FC<FuelAndFleetLogisticsProps> = ({
           { id: 'routes', label: 'Morning & Evening Routes', icon: MapPin },
           { id: 'maintenance', label: 'Maintenance & Service Records', icon: Wrench },
           { id: 'roster', label: 'Student Transport Roster', icon: Users },
+          { id: 'trips', label: 'Bus Trip History', icon: Navigation },
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeSubTab === tab.id;
@@ -1008,6 +1013,62 @@ export const FuelAndFleetLogistics: React.FC<FuelAndFleetLogisticsProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          SUB-TAB 6: BUS TRIP HISTORY (MAP VISUALIZATION)
+          ========================================================================= */}
+      {activeSubTab === 'trips' && (
+        <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-5">
+          <h3 className="text-sm font-bold text-slate-900 mb-4 flex items-center gap-2">
+            <Navigation className="w-4 h-4 text-emerald-700" />
+            Bus Trip History & Map Visualization
+          </h3>
+          <div className="h-96 w-full rounded-lg overflow-hidden border border-slate-200">
+            <APIProvider apiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''}>
+              <Map
+                defaultCenter={{lat: -1.111, lng: 36.65}}
+                defaultZoom={12}
+                mapId="DEMO_MAP_ID"
+                internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
+              >
+                {busTripLogs.map(trip => (
+                  <AdvancedMarker key={trip.id} position={trip.startLocation} />
+                ))}
+              </Map>
+            </APIProvider>
+          </div>
+          <div className="mt-4 overflow-x-auto">
+             <table className="w-full text-left text-xs">
+                <thead>
+                    <tr className="bg-slate-100 text-slate-700 border-b border-slate-200 font-semibold">
+                        <th className="py-2.5 px-3">Trip ID</th>
+                        <th className="py-2.5 px-3">Route</th>
+                        <th className="py-2.5 px-3">Vehicle</th>
+                        <th className="py-2.5 px-3">Start Time</th>
+                        <th className="py-2.5 px-3">End Time</th>
+                        <th className="py-2.5 px-3">Status</th>
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                    {busTripLogs.map(trip => (
+                        <tr key={trip.id}>
+                            <td className="py-2.5 px-3 font-mono">{trip.id}</td>
+                            <td className="py-2.5 px-3">{trip.routeId}</td>
+                            <td className="py-2.5 px-3">{trip.vehicleId}</td>
+                            <td className="py-2.5 px-3">{new Date(trip.startTime).toLocaleString()}</td>
+                            <td className="py-2.5 px-3">{trip.endTime ? new Date(trip.endTime).toLocaleString() : 'In Progress'}</td>
+                            <td className="py-2.5 px-3">
+                                <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${trip.status === 'completed' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                                    {trip.status}
+                                </span>
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+             </table>
           </div>
         </div>
       )}

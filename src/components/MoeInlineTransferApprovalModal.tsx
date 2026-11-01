@@ -80,7 +80,7 @@ export function MoeInlineTransferApprovalModal({
             <div className="flex items-center justify-between">
               <div>
                 <strong className="text-sm font-black text-slate-900 dark:text-white block">
-                  {transfer.learnerName}
+                  {transfer.studentName || transfer.learnerName}
                 </strong>
                 <span className="font-mono text-slate-600 dark:text-slate-400">
                   NEMIS UPI: <strong className="text-slate-900 dark:text-white">{transfer.nemisUpi}</strong> · {transfer.grade}
@@ -93,13 +93,13 @@ export function MoeInlineTransferApprovalModal({
           <div className="grid grid-cols-2 gap-3">
             <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800">
               <span className="text-[11px] text-slate-400 uppercase font-bold block mb-1">Releasing School</span>
-              <div className="font-bold text-slate-900 dark:text-white">{transfer.fromSchool}</div>
+              <div className="font-bold text-slate-900 dark:text-white">{transfer.fromSchoolName || transfer.fromSchool}</div>
               <span className="text-[11px] text-slate-500">Clearance Slip Verified</span>
             </div>
 
             <div className="p-3 rounded-xl border border-emerald-300 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20">
               <span className="text-[11px] text-emerald-800 dark:text-emerald-400 uppercase font-bold block mb-1">Admitting School</span>
-              <div className="font-bold text-slate-900 dark:text-white">{transfer.toSchool}</div>
+              <div className="font-bold text-slate-900 dark:text-white">{transfer.toSchoolName || transfer.toSchool}</div>
               <span className="text-[11px] text-emerald-700 dark:text-emerald-400">NEMIS Slot Reserved</span>
             </div>
           </div>

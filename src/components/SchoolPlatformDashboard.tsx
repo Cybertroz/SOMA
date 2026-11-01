@@ -22,6 +22,8 @@ import {
   Clock,
   Sparkles,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Filter,
   Layers,
   FileSpreadsheet,
@@ -135,48 +137,7 @@ export function SchoolPlatformDashboard({
 
   // Attendance Modal State
   const [isAttendanceModalOpen, setIsAttendanceModalOpen] = useState(false);
-
-  // "Needs Your Attention" Tasks with Live Completion
-  const [tasks, setTasks] = useState<AttentionTask[]>([
-    {
-      id: 'task-1',
-      title: '3 learners missing NEMIS UPI numbers',
-      description: 'Learners must be mapped before MoE Capitation warrant disbursement.',
-      badge: '3 Missing',
-      badgeType: 'rose',
-      actionText: 'Inspect Missing UPI',
-      completed: false,
-    },
-    {
-      id: 'task-2',
-      title: '2 fee defaulters owing over KES 15,000',
-      description: 'Dispatch automated Safaricom Paybill reminder SMS to guardians.',
-      badge: 'Defaulters',
-      badgeType: 'amber',
-      actionText: 'Filter Defaulters',
-      completed: false,
-    },
-    {
-      id: 'task-3',
-      title: 'Grade 7 CBC integrated science marksheet pending submission',
-      description: 'Term 1 summative records required for KNEC formative tracking.',
-      badge: 'G7 Science',
-      badgeType: 'amber',
-      actionText: 'Upload Marksheet',
-      completed: false,
-    },
-    {
-      id: 'task-4',
-      title: 'M-Pesa reconciliation batch verified',
-      description: 'Paybill 522123 payments auto-cleared against student votehead ledgers.',
-      badge: 'Verified',
-      badgeType: 'emerald',
-      actionText: 'Verify Ledger',
-      completed: false,
-    },
-  ]);
-
-  const openTasksCount = useMemo(() => tasks.filter((t) => !t.completed).length, [tasks]);
+  const [isMpesaFeedsCollapsed, setIsMpesaFeedsCollapsed] = useState(false);
 
   // Aggregate Calculations
   const metrics = useMemo(() => {
@@ -740,80 +701,6 @@ export function SchoolPlatformDashboard({
           </div>
         </div>
 
-        {/* Right 1 Col: "Needs Your Attention" Task List */}
-        <div className={`p-5 rounded-2xl border space-y-4 ${
-          isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-xs'
-        }`}>
-          <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-amber-600" />
-              <h3 className="font-black text-slate-950 dark:text-white text-base">Needs Your Attention</h3>
-            </div>
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-amber-400 text-slate-950 font-mono shadow-2xs">
-              {openTasksCount} open
-            </span>
-          </div>
-
-          <div className="space-y-3">
-            {tasks.map((task) => (
-              <div
-                key={task.id}
-                className={`p-3.5 rounded-xl border transition-all text-xs space-y-2 ${
-                  task.completed
-                    ? 'opacity-60 bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800'
-                    : isDarkMode
-                    ? 'bg-slate-800/60 border-slate-700'
-                    : 'bg-slate-50 border-slate-300 shadow-2xs'
-                }`}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-start gap-2">
-                    <button
-                      onClick={() => {
-                        setTasks((prev) =>
-                          prev.map((t) => (t.id === task.id ? { ...t, completed: !t.completed } : t))
-                        );
-                      }}
-                      className={`w-4 h-4 mt-0.5 rounded flex items-center justify-center border transition-colors ${
-                        task.completed
-                          ? 'bg-emerald-600 border-emerald-600 text-white'
-                          : 'border-slate-400 hover:border-emerald-600'
-                      }`}
-                    >
-                      {task.completed && <Check className="w-3 h-3 stroke-[3]" />}
-                    </button>
-                    <div>
-                      <h4 className={`font-black ${task.completed ? 'line-through text-slate-500' : 'text-slate-950 dark:text-white'}`}>
-                        {task.title}
-                      </h4>
-                      <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5">
-                        {task.description}
-                      </p>
-                    </div>
-                  </div>
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold border shrink-0 ${
-                    task.badgeType === 'rose'
-                      ? 'bg-rose-100 text-rose-950 border-rose-300 dark:bg-rose-950/80 dark:text-rose-300 dark:border-rose-700'
-                      : task.badgeType === 'amber'
-                      ? 'bg-amber-100 text-amber-950 border-amber-300 dark:bg-amber-950/80 dark:text-amber-300 dark:border-amber-700'
-                      : 'bg-emerald-100 text-emerald-950 border-emerald-300 dark:bg-emerald-950/80 dark:text-emerald-300 dark:border-emerald-700'
-                  }`}>
-                    {task.badge}
-                  </span>
-                </div>
-
-                <div className="flex justify-end pt-1">
-                  <button
-                    onClick={() => handleTaskAction(task)}
-                    className="text-xs font-black text-emerald-800 hover:text-emerald-950 dark:text-emerald-400 dark:hover:text-emerald-300 underline"
-                  >
-                    {task.completed ? 'Re-open' : `${task.actionText} →`}
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
       </div>
 
       {/* =========================================================================
@@ -895,284 +782,63 @@ export function SchoolPlatformDashboard({
               <Smartphone className="w-5 h-5 text-emerald-700 dark:text-emerald-400" />
               <h3 className="font-black text-slate-950 dark:text-white text-base">Recent M-Pesa Feeds</h3>
             </div>
-            <button
-              onClick={() => onSelectTab('daraja')}
-              className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-emerald-300 rounded-md text-[11px] font-bold shadow-xs transition-colors border border-slate-700 flex items-center gap-1"
-              title="Configure Safaricom Daraja API keys, Till/Paybill, and passkeys in Settings"
-            >
-              <span>API Settings</span>
-            </button>
-          </div>
-
-          <div className="space-y-2.5 max-h-[380px] overflow-y-auto">
-            {darajaPayments.slice(0, 5).map((pay, i) => (
-              <div
-                key={i}
-                className="p-3 rounded-xl border border-slate-300 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex justify-between items-center text-xs"
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsMpesaFeedsCollapsed(!isMpesaFeedsCollapsed)}
+                className="p-1 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white transition-colors"
               >
-                <div>
-                  <strong className="text-slate-950 dark:text-white block">{pay.matchedLearnerName}</strong>
-                  <span className="font-mono text-[11px] text-slate-600 dark:text-slate-400 block">
-                    {pay.transId} · Ref: {pay.billRefNumber}
-                  </span>
-                  <span className="text-[10px] text-emerald-800 dark:text-emerald-400 font-bold block">
-                    {pay.allocatedVotehead}
-                  </span>
-                </div>
-                <div className="text-right">
-                  <span className="font-black font-mono text-emerald-800 dark:text-emerald-400 tabular-nums block text-sm">
-                    KES {pay.transAmount.toLocaleString()}
-                  </span>
-                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-950 border border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300">
-                    Auto-Credited
-                  </span>
-                </div>
+                {isMpesaFeedsCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+              </button>
+              <button
+                onClick={() => onSelectTab('daraja')}
+                className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-emerald-300 rounded-md text-[11px] font-bold shadow-xs transition-colors border border-slate-700 flex items-center gap-1"
+                title="Configure Safaricom Daraja API keys, Till/Paybill, and passkeys in Settings"
+              >
+                <span>API Settings</span>
+              </button>
+            </div>
+          </div>
+
+          {!isMpesaFeedsCollapsed && (
+            <>
+              <div className="space-y-2.5 max-h-[380px] overflow-y-auto">
+                {darajaPayments.slice(0, 5).map((pay, i) => (
+                  <div
+                    key={i}
+                    className="p-3 rounded-xl border border-slate-300 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex justify-between items-center text-xs"
+                  >
+                    <div>
+                      <strong className="text-slate-950 dark:text-white block">{pay.matchedLearnerName}</strong>
+                      <span className="font-mono text-[11px] text-slate-600 dark:text-slate-400 block">
+                        {pay.transId} · Ref: {pay.billRefNumber}
+                      </span>
+                      <span className="text-[10px] text-emerald-800 dark:text-emerald-400 font-bold block">
+                        {pay.allocatedVotehead}
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <span className="font-black font-mono text-emerald-800 dark:text-emerald-400 tabular-nums block text-sm">
+                        KES {pay.transAmount.toLocaleString()}
+                      </span>
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-950 border border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300">
+                        Auto-Credited
+                      </span>
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
 
-          <button
-            onClick={() => onSelectTab('daraja')}
-            className="w-full py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs rounded-xl transition-colors border border-slate-300 dark:border-slate-700 text-center block"
-          >
-            Open Full Daraja Gateway & Webhook Log →
-          </button>
+              <button
+                onClick={() => onSelectTab('daraja')}
+                className="w-full py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs rounded-xl transition-colors border border-slate-300 dark:border-slate-700 text-center block"
+              >
+                Open Full Daraja Gateway & Webhook Log →
+              </button>
+            </>
+          )}
         </div>
       </div>
 
-      {/* =========================================================================
-          5. REBUILT LEARNER TABLE WITH SEARCH, FILTERS & MISSING UPI FLAG
-          ========================================================================= */}
-      <div className={`p-5 rounded-2xl border space-y-4 ${
-        isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-xs'
-      }`}>
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-          <div>
-            <h3 className="text-lg font-black text-slate-950 dark:text-white flex items-center gap-2">
-              <School className="w-5 h-5 text-emerald-700 dark:text-emerald-400" />
-              <span>Learner Master Directory (Grades 1 to 9)</span>
-            </h3>
-            <p className="text-xs text-slate-600 dark:text-slate-400 font-medium">
-              Click any row to open the learner dossier: record payments, edit bank clearances, dispatch guardian SMS, or update NEMIS UPI.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2 flex-wrap">
-            <button
-              onClick={handlePrintLearners}
-              className="px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors"
-              title="Print master learner registry"
-            >
-              <Printer className="w-3.5 h-3.5" />
-              <span>Print Registry</span>
-            </button>
-
-            <button
-              onClick={handleExportLearners}
-              className="px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors"
-              title="Export all learners to Excel CSV"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5" />
-              <span>Export (.csv)</span>
-            </button>
-
-            <button
-              onClick={onOpenAdmitModal}
-              className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-black shadow-xs flex items-center gap-1.5 transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Admit Learner</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Filter Strip & Search Box (Keyboard '/' focus) */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
-          {/* Search Box */}
-          <div className="relative w-full sm:w-80">
-            <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-500 dark:text-slate-400" />
-            <input
-              ref={searchInputRef}
-              type="text"
-              placeholder="Search by name, admission, grade or UPI (press '/' to focus)..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-8 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-500 dark:placeholder:text-slate-400 text-xs font-semibold focus:outline-hidden focus:ring-2 focus:ring-emerald-600 shadow-2xs"
-            />
-            <kbd className="hidden sm:inline-block absolute right-2.5 top-2.5 px-1.5 py-0.5 text-[10px] font-mono font-bold text-slate-500 bg-slate-100 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded">
-              /
-            </kbd>
-          </div>
-
-          {/* Fee Status Filter Buttons */}
-          <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto">
-            {(['All', 'Cleared', 'Partial', 'Defaulter', 'Missing UPI'] as const).map((chip) => {
-              const isActive = feeStatusFilter === chip;
-              return (
-                <button
-                  key={chip}
-                  onClick={() => setFeeStatusFilter(chip)}
-                  className={`px-3 py-1.5 rounded-lg font-black text-xs transition-all border ${
-                    isActive
-                      ? 'bg-emerald-800 text-white border-emerald-900 shadow-xs'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-slate-300 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
-                  }`}
-                >
-                  {chip === 'Missing UPI' ? (
-                    <span className="flex items-center gap-1 text-rose-700 dark:text-rose-400 font-black">
-                      <span>Missing UPI</span>
-                      <span className="w-2 h-2 rounded-full bg-rose-600" />
-                    </span>
-                  ) : (
-                    chip
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Table View with Sortable Columns */}
-        <div className="overflow-x-auto rounded-xl border border-slate-300 dark:border-slate-700">
-          <table className="w-full text-left text-xs">
-            <thead className={`border-b font-black ${
-              isDarkMode ? 'bg-slate-800 text-slate-200 border-slate-700' : 'bg-slate-100 text-slate-900 border-slate-300'
-            }`}>
-              <tr>
-                <th
-                  onClick={() => handleSort('admissionNo')}
-                  className="p-3.5 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-                >
-                  <span className="flex items-center gap-1">
-                    <span>Admission No</span>
-                    <ArrowUpDown className="w-3.5 h-3.5" />
-                  </span>
-                </th>
-                <th
-                  onClick={() => handleSort('name')}
-                  className="p-3.5 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-                >
-                  <span className="flex items-center gap-1">
-                    <span>Learner Full Name</span>
-                    <ArrowUpDown className="w-3.5 h-3.5" />
-                  </span>
-                </th>
-                <th
-                  onClick={() => handleSort('grade')}
-                  className="p-3.5 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-                >
-                  <span className="flex items-center gap-1">
-                    <span>Grade & Stream</span>
-                    <ArrowUpDown className="w-3.5 h-3.5" />
-                  </span>
-                </th>
-                <th className="p-3.5">NEMIS UPI Identifier</th>
-                <th
-                  onClick={() => handleSort('balance')}
-                  className="p-3.5 text-right cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-                >
-                  <span className="flex items-center justify-end gap-1">
-                    <span>Fee Balance (KES)</span>
-                    <ArrowUpDown className="w-3.5 h-3.5" />
-                  </span>
-                </th>
-                <th
-                  onClick={() => handleSort('status')}
-                  className="p-3.5 text-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-                >
-                  <span className="flex items-center justify-center gap-1">
-                    <span>Ledger Status</span>
-                    <ArrowUpDown className="w-3.5 h-3.5" />
-                  </span>
-                </th>
-                <th className="p-3.5 text-right">Quick Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-              {filteredLearners.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="p-8 text-center text-slate-500 font-semibold">
-                    No learners match the current filter or search criteria.
-                  </td>
-                </tr>
-              ) : (
-                filteredLearners.map((learner) => {
-                  const isMissingUpi = !learner.nemisUpi || learner.nemisUpi.trim() === '';
-                  return (
-                    <tr
-                      key={learner.id}
-                      onClick={() => setSelectedLearner(learner)}
-                      className={`transition-colors cursor-pointer ${
-                        isDarkMode ? 'hover:bg-slate-800/70' : 'hover:bg-slate-50/90'
-                      }`}
-                    >
-                      <td className="p-3.5 font-mono font-bold text-slate-900 dark:text-slate-100">
-                        {learner.admissionNo}
-                      </td>
-                      <td className="p-3.5 font-black text-slate-950 dark:text-white">
-                        <div className="flex items-center gap-2">
-                          <span>{learner.name}</span>
-                          {learner.specialNeedsCategory && (
-                            <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-purple-100 text-purple-900 border border-purple-300">
-                              SNE
-                            </span>
-                          )}
-                        </div>
-                        <span className="block text-[11px] text-slate-500 font-medium">
-                          Guardian: {learner.guardianName} ({learner.guardianPhone})
-                        </span>
-                      </td>
-                      <td className="p-3.5 text-slate-800 dark:text-slate-200 font-bold">
-                        {learner.grade} · <span className="font-semibold">{learner.stream}</span>
-                      </td>
-                      <td className="p-3.5 font-mono">
-                        {isMissingUpi ? (
-                          <span className="px-2 py-0.5 rounded text-[10px] font-black bg-rose-100 text-rose-950 border border-rose-300 dark:bg-rose-950 dark:text-rose-300 animate-pulse inline-flex items-center gap-1">
-                            <AlertTriangle className="w-3 h-3" />
-                            <span>Missing UPI</span>
-                          </span>
-                        ) : (
-                          <span className="text-emerald-800 dark:text-emerald-400 font-bold">
-                            {learner.nemisUpi}
-                          </span>
-                        )}
-                      </td>
-                      <td className="p-3.5 text-right font-mono font-black tabular-nums text-sm">
-                        {learner.fees.balance === 0 ? (
-                          <span className="text-emerald-800 dark:text-emerald-400">Cleared</span>
-                        ) : (
-                          <span className="text-rose-600 dark:text-rose-400">
-                            KES {learner.fees.balance.toLocaleString()}
-                          </span>
-                        )}
-                      </td>
-                      <td className="p-3.5 text-center">
-                        <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-bold border shadow-2xs ${
-                          learner.fees.status === 'Cleared'
-                            ? 'bg-emerald-100 text-emerald-950 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300'
-                            : learner.fees.status === 'Partial'
-                            ? 'bg-amber-100 text-amber-950 border-amber-300 dark:bg-amber-950 dark:text-amber-300'
-                            : 'bg-rose-100 text-rose-950 border-rose-300 dark:bg-rose-950 dark:text-rose-300 font-black'
-                        }`}>
-                          {learner.fees.status}
-                        </span>
-                      </td>
-                      <td className="p-3.5 text-right" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          onClick={() => setSelectedLearner(learner)}
-                          className="px-2.5 py-1 rounded-md text-xs font-bold text-emerald-900 hover:text-emerald-950 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 dark:bg-slate-800 dark:text-emerald-300 dark:border-slate-700 shadow-2xs"
-                        >
-                          Dossier →
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
 
       {/* =========================================================================
           MODAL 1: LEARNER DOSSIER SIDE PANEL (RECORD PAYMENT, DISPATCH SMS, EDIT UPI)

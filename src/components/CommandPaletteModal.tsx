@@ -28,7 +28,7 @@ import { Learner, KiambuSchoolRecord, ActiveTab } from '../types/school';
 interface CommandPaletteProps {
   isOpen: boolean;
   onClose: () => void;
-  onSelectTab: (tab: ActiveTab) => void;
+  onSelectTab: (tab: any) => void;
   onSelectLearner?: (learner: Learner) => void;
   onSelectSchool?: (school: KiambuSchoolRecord) => void;
   learners: Learner[];
